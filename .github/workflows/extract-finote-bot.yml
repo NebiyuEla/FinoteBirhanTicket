@@ -14,8 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Hash 500-byte segments
+      - name: Print first archive segment
         run: |
-          mkdir -p /tmp/segments
-          split -b 500 -d -a 2 bot/archive-parts/part00.b64 /tmp/segments/seg
-          for f in /tmp/segments/seg*; do echo "$(basename "$f") $(wc -c < "$f") $(sha256sum "$f" | cut -d' ' -f1)"; done
+          head -c 500 bot/archive-parts/part00.b64
+          echo
