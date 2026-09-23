@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'bot/finotebirhan-ticket-bot-fixed-v13.zip'
+      - '.github/workflows/extract-finote-bot.yml'
 
 permissions:
   contents: write
@@ -12,7 +13,6 @@ permissions:
 jobs:
   extract:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('bot/finotebirhan-ticket-bot-fixed-v13.zip') != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,6 +21,7 @@ jobs:
 
       - name: Extract backend source
         run: |
+          test -f bot/finotebirhan-ticket-bot-fixed-v13.zip
           rm -rf bot/backend
           mkdir -p bot/backend
           unzip -q bot/finotebirhan-ticket-bot-fixed-v13.zip -d bot/backend
