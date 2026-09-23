@@ -9,7 +9,6 @@
   <link rel="icon" href="./logo.svg" />
   <link rel="stylesheet" href="./styles.css" />
   <style>
-    /* Keep the action footer visible for both bundle and single-ticket number screens. */
     .number-screen.visible{min-height:0!important}
     .selection-shell{display:flex!important;flex-direction:column!important;min-height:0!important;overflow:hidden!important}
     .pool-tabs,.legend{flex:0 0 auto!important}
@@ -40,7 +39,7 @@
       </div>
       <div class="seller-form">
         <label class="seller-field"><span data-i18n="buyerFullName">የገዢው ሙሉ ስም</span><input id="sellerBuyerName" autocomplete="name" maxlength="80" placeholder="ሙሉ ስም" /></label>
-        <label class="seller-field"><span data-i18n="phone">ስልክ ቁጥር</span><input id="sellerBuyerPhone" inputmode="tel" autocomplete="tel" maxlength="16" placeholder="09XXXXXXXX" /></label>
+        <label class="seller-field"><span data-i18n="phone">ስልክ ቁጥር</span><input id="sellerBuyerPhone" inputmode="tel" autocomplete="tel" maxlength="16" placeholder="09XXXXXXXX / 07XXXXXXXX" /></label>
         <div class="payment-section"><div class="pay-title" data-i18n="paymentDestination">ክፍያ የት ይገባ?</div><div class="pay-options"><button id="payFinote" class="pay-option active" type="button" data-pay="finote" data-i18n="finoteBirhan">ፍኖተ ብርሃን</button><button id="paySeller" class="pay-option" type="button" data-pay="seller" data-i18n="sellerAccount">የእኔ አካውንት</button></div></div>
         <div class="seller-note" id="sellerPaymentNote"></div>
         <button class="seller-next glow-action" id="sellerContinue" type="button" data-i18n="chooseTicketArrow">ትኬት ይምረጡ →</button>
@@ -65,8 +64,8 @@
           </button>
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="200">
-            <div class="prize-media contain-media"><img id="ticket200Image" src="./assets/ticket-200.webp?v=20260923-1814" alt="St Mary ምስለ ሰዕል" /></div>
-            <div class="prize-copy"><span class="price-label">200 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize200">የSt Mary ምስለ ሰዕል</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
+            <div class="prize-media contain-media"><img id="ticket200Image" src="./assets/ticket-200.webp?v=20260923-1926" alt="የቅድስት ማርያም ምስለ ሰዕል" /></div>
+            <div class="prize-copy"><span class="price-label">200 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize200">የቅድስት ማርያም ምስለ ሰዕል</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
           </button>
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="100">
@@ -76,7 +75,7 @@
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="50">
             <div class="prize-media"><img id="ticket50Image" src="./logo.svg" alt="50 ብር ዕጣ" /></div>
-            <div class="prize-copy"><span class="price-label">50 <span data-i18n="birr">ብር</span></span><strong class="prize-name long-prize" id="prize50">ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የSt Mary ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
+            <div class="prize-copy"><span class="price-label">50 <span data-i18n="birr">ብር</span></span><strong class="prize-name long-prize" id="prize50">ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የቅድስት ማርያም ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
           </button>
         </div>
       </div>
@@ -105,8 +104,8 @@
         var p200 = document.getElementById('prize200');
         var p50 = document.getElementById('prize50');
         var confirm = document.getElementById('confirmBtn');
-        if (p200) p200.textContent = lang === 'en' ? 'St Mary icon' : 'የSt Mary ምስለ ሰዕል';
-        if (p50) p50.textContent = lang === 'en' ? 'Netela, 4:3 epoxy St Mary icon & Zemare Heran key holder' : 'ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የSt Mary ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ';
+        if (p200) p200.textContent = lang === 'en' ? 'St Mary icon' : 'የቅድስት ማርያም ምስለ ሰዕል';
+        if (p50) p50.textContent = lang === 'en' ? 'Netela, 4:3 epoxy St Mary icon & Zemare Heran key holder' : 'ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የቅድስት ማርያም ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ';
         if (confirm && !confirm.disabled) confirm.textContent = lang === 'en' ? 'Reserve & Pay' : 'ይያዙ እና ይክፈሉ';
         if (confirm && confirm.disabled && confirm.textContent !== 'በመላክ ላይ…' && confirm.textContent !== 'Sending…') confirm.textContent = lang === 'en' ? 'Reserve & Pay' : 'ይያዙ እና ይክፈሉ';
       }
