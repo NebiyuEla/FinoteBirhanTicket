@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'bot/finotebirhan-ticket-bot-fixed-v13.zip'
-      - '.github/workflows/extract-finote-bot.yml'
+      - 'bot/archive-parts/part09.b64'
 
 permissions:
   contents: write
@@ -19,12 +18,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Rebuild and verify backend archive
+        run: |
+          cat bot/archive-parts/part*.b64 | tr -d '\n' | base64 -d > /tmp/finote-bot.zip
+          echo '1efaf1df5596068709b552803db91e9086d384ebff1b5e01aa964b9bd03bfc96  /tmp/finote-bot.zip' | sha256sum -c -
+          unzip -t /tmp/finote-bot.zip
+
       - name: Extract backend source
         run: |
-          test -f bot/finotebirhan-ticket-bot-fixed-v13.zip
           rm -rf bot/backend
           mkdir -p bot/backend
-          unzip -q bot/finotebirhan-ticket-bot-fixed-v13.zip -d bot/backend
+          unzip -q /tmp/finote-bot.zip -d bot/backend
+
+      - name: Test backend
+        working-directory: bot/backend
+        run: npm test
 
       - name: Commit extracted backend source
         run: |
@@ -35,5 +43,5 @@ jobs:
             echo "No backend source changes to commit."
             exit 0
           fi
-          git commit -m "feat: add Finote ticket bot backend source"
+          git commit -m "feat: add multi-transfer-account bot backend source"
           git push
