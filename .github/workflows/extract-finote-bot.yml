@@ -1,47 +1,21 @@
-name: Extract Finote Ticket Bot Backend
+name: Diagnose Finote Ticket Bot Archive
 
 on:
   push:
     branches: [main]
     paths:
-      - 'bot/archive-parts/part09.b64'
+      - '.github/workflows/extract-finote-bot.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  extract:
+  diagnose:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Rebuild and verify backend archive
+      - uses: actions/checkout@v4
+      - name: Hash 500-byte segments
         run: |
-          cat bot/archive-parts/part*.b64 | tr -d '\n' | base64 -d > /tmp/finote-bot.zip
-          echo '1efaf1df5596068709b552803db91e9086d384ebff1b5e01aa964b9bd03bfc96  /tmp/finote-bot.zip' | sha256sum -c -
-          unzip -t /tmp/finote-bot.zip
-
-      - name: Extract backend source
-        run: |
-          rm -rf bot/backend
-          mkdir -p bot/backend
-          unzip -q /tmp/finote-bot.zip -d bot/backend
-
-      - name: Test backend
-        working-directory: bot/backend
-        run: npm test
-
-      - name: Commit extracted backend source
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bot/backend
-          if git diff --cached --quiet; then
-            echo "No backend source changes to commit."
-            exit 0
-          fi
-          git commit -m "feat: add multi-transfer-account bot backend source"
-          git push
+          mkdir -p /tmp/segments
+          split -b 500 -d -a 2 bot/archive-parts/part00.b64 /tmp/segments/seg
+          for f in /tmp/segments/seg*; do echo "$(basename "$f") $(wc -c < "$f") $(sha256sum "$f" | cut -d' ' -f1)"; done
