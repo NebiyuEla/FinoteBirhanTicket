@@ -25,7 +25,6 @@
     <section class="screen" data-screen="sellerCustomer">
       <div class="section-head roomy">
         <div><h2 data-i18n="newSale">አዲስ ትኬት ሽያጭ</h2><p data-i18n="buyerInfo">የገዢውን መረጃ ያስገቡ</p></div>
-        <button class="mini-lang" data-lang-control type="button">EN</button>
       </div>
       <div class="seller-form">
         <label class="seller-field"><span data-i18n="buyerFullName">የገዢው ሙሉ ስም</span><input id="sellerBuyerName" autocomplete="name" maxlength="80" placeholder="ሙሉ ስም" /></label>
@@ -36,27 +35,42 @@
       </div>
     </section>
 
-    <section class="screen visible" data-screen="ticket">
+    <section class="screen visible ticket-screen" data-screen="ticket">
       <div class="section-head roomy">
-        <div><h2 data-i18n="chooseTicket">ትኬት ይምረጡ</h2><p data-i18n="chooseTicketHint">የሚያሸንፉትን ሽልማት ይመልከቱ፣ ትኬት ይምረጡ።</p></div>
-        <button class="mini-lang" data-lang-control type="button">EN</button>
+        <div><h2 data-i18n="chooseTicket">ትኬት ይምረጡ</h2><p data-i18n="chooseTicketHint">ሽልማቱን ይመልከቱ እና ትኬቱን ይጫኑ።</p></div>
       </div>
       <div class="seller-buyer-bar hidden" id="sellerBuyerBar"><div><strong id="sellerBuyerLabel">Buyer</strong><span id="sellerBuyerMeta"></span></div><button id="editBuyer" type="button" data-i18n="edit">ቀይር</button></div>
-      <div class="ticket-grid" id="ticketGrid">
-        <button class="ticket-card bundle clickable-glow" type="button" data-ticket="bundle">
-          <div class="bundle-copy"><span class="badge" data-i18n="discount">ቅናሽ</span><strong data-i18n="bundleTitle">ሶስቱም በአንድ</strong><small data-i18n="bundlePrize">ሶስቱንም ሽልማቶች የማሸነፍ ዕድል</small></div>
-          <div class="bundle-price"><span class="old-price">350 <span data-i18n="birr">ብር</span></span><div class="ticket-price"><span>300</span><b data-i18n="birr">ብር</b></div></div>
-        </button>
-        <div class="standard-row">
-          <button class="ticket-card standard clickable-glow" type="button" data-ticket="200"><div class="card-media brand-media"><img src="./logo.svg" alt="200 ብር" /></div><div class="standard-copy"><span class="price-label">200 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize200">ዋና ሽልማት</strong></div></button>
-          <button class="ticket-card standard clickable-glow" type="button" data-ticket="100"><div class="card-media product-media"><img id="ticket100Image" class="product-image" src="./logo.svg" alt="100 ብር ዕጣ" /></div><div class="standard-copy"><span class="price-label">100 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize100">የእንጨት መጽሐፍ ቅዱስ</strong></div></button>
-          <button class="ticket-card standard clickable-glow" type="button" data-ticket="50"><div class="card-media product-media"><img id="ticket50Image" class="product-image" src="./logo.svg" alt="50 ብር ዕጣ" /></div><div class="standard-copy"><span class="price-label">50 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize50">የእመቤታችን ምስል + ቁልፍ ማንጠልጠያ</strong></div></button>
+
+      <div class="ticket-scroll">
+        <div class="ticket-grid" id="ticketGrid">
+          <button class="ticket-card bundle clickable-glow" type="button" data-ticket="bundle">
+            <div class="bundle-copy">
+              <span class="badge" data-i18n="discount">ቅናሽ</span>
+              <strong data-i18n="bundleTitle">ሶስቱም ዕጣዎች በአንድ</strong>
+              <small data-i18n="bundlePrize">በ200፣ 100 እና 50 ብር ዕጣ አንድ አንድ ቁጥር — ዕድልዎን ይጨምራል</small>
+            </div>
+            <div class="bundle-price"><span class="old-price">350 <span data-i18n="birr">ብር</span></span><div class="ticket-price"><span>300</span><b data-i18n="birr">ብር</b></div></div>
+          </button>
+
+          <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="200">
+            <div class="prize-media contain-media"><img id="ticket200Image" src="./assets/ticket-200.webp" alt="200 ብር ዕጣ" /></div>
+            <div class="prize-copy"><span class="price-label">200 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize200">የእምቤታችን ምስለ ሰዕል</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
+          </button>
+
+          <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="100">
+            <div class="prize-media"><img id="ticket100Image" src="./logo.svg" alt="100 ብር ዕጣ" /></div>
+            <div class="prize-copy"><span class="price-label">100 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize100">በእንጨት የተሰራ መጽሐፍ ቅዱስ</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
+          </button>
+
+          <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="50">
+            <div class="prize-media"><img id="ticket50Image" src="./logo.svg" alt="50 ብር ዕጣ" /></div>
+            <div class="prize-copy"><span class="price-label">50 <span data-i18n="birr">ብር</span></span><strong class="prize-name long-prize" id="prize50">ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የእመቤታችን ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
+          </button>
         </div>
       </div>
-      <p class="tap-hint" data-i18n="tapHint">አንዱን ትኬት በመጫን ቁጥር ይምረጡ</p>
     </section>
 
-    <section class="screen" data-screen="numbers">
+    <section class="screen number-screen" data-screen="numbers">
       <div class="number-head">
         <div><h2 data-i18n="chooseNumber">ቁጥር ይምረጡ</h2><p id="numberHelp">ከ001–200 አንድ ያልተወሰደ ቁጥር ይምረጡ።</p></div>
         <div class="number-actions"><button class="mini-lang" data-lang-control type="button">EN</button><button class="back-btn" id="backBtn" type="button" data-i18n="back">ተመለስ</button></div>
