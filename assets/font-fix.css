@@ -7,8 +7,6 @@ html[lang="en"] h1,html[lang="en"] h2,html[lang="en"] h3,html[lang="en"] strong,
 html[lang="en"] p,html[lang="en"] small,html[lang="en"] .tap-label{font-weight:700!important;letter-spacing:-.005em}
 html[lang="am"] h1,html[lang="am"] h2,html[lang="am"] h3,html[lang="am"] strong,html[lang="am"] button,.price-label,.ticket-price>span{font-weight:800!important}
 html[lang="am"] p,html[lang="am"] small,html[lang="am"] .tap-label{font-weight:700!important}
-
-/* iOS Telegram WebView: remove native button rendering and avoid grid/button paint glitches. */
 button,.ticket-card{-webkit-appearance:none!important;appearance:none!important}
 .ticket-card{width:100%!important;margin:0!important;-webkit-text-fill-color:currentColor!important}
 .prize-card{display:flex!important;grid-template-columns:none!important;align-items:stretch!important;min-height:176px!important;position:relative!important;isolation:isolate!important;background:#fff!important;overflow:hidden!important}
@@ -17,34 +15,13 @@ button,.ticket-card{-webkit-appearance:none!important;appearance:none!important}
 .prize-copy .price-label{display:block!important;color:var(--blue-deep)!important;-webkit-text-fill-color:var(--blue-deep)!important;opacity:1!important;visibility:visible!important}
 .prize-copy .prize-name{display:block!important;color:var(--text)!important;-webkit-text-fill-color:var(--text)!important;opacity:1!important;visibility:visible!important;overflow-wrap:anywhere!important}
 .prize-copy .tap-label{display:block!important;color:var(--blue)!important;-webkit-text-fill-color:var(--blue)!important;opacity:1!important;visibility:visible!important}
-
-/* Always render the 200 ETB St Mary image from the verified static asset. The background is also a fallback if WebKit refuses the img source. */
-.contain-media{background:#f7f1e7 url("/assets/ticket-200.webp?v=ios-20260923-1") center/contain no-repeat!important}
-#ticket200Image{opacity:1!important;visibility:visible!important;display:block!important;width:100%!important;height:100%!important;object-fit:contain!important;object-position:center!important;padding:8px!important;background:transparent!important;font-size:0!important;color:transparent!important}
-#ticket200Image[src="./logo.svg"],#ticket200Image:not([src]){opacity:0!important}
-
-/* Stable mobile viewport and scroll containment for Telegram on iPhone. */
+/* Final 200 ETB image: exact user-approved Kidist Maryam artwork, static JPEG for iOS/Android Telegram reliability. */
+.contain-media{background:#f7f1e7 url("/assets/ticket-200-final.jpg?v=final-20260923") center/contain no-repeat!important}
+#ticket200Image{opacity:0!important;visibility:hidden!important;display:block!important;width:100%!important;height:100%!important;pointer-events:none!important}
 .app{height:var(--app-height,100svh)!important;max-height:var(--app-height,100svh)!important;min-height:0!important;padding-bottom:max(14px,env(safe-area-inset-bottom))!important}
 .ticket-screen{min-height:0!important;overflow:hidden!important}
 .ticket-scroll{min-height:0!important;flex:1 1 auto!important;overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important;overscroll-behavior:contain!important;padding-bottom:max(28px,calc(16px + env(safe-area-inset-bottom)))!important}
 .ticket-grid{width:100%!important}
 .number-grid{-webkit-overflow-scrolling:touch!important}
-
-@supports (-webkit-touch-callout:none){
-  .clickable-glow{transform:translateZ(0)}
-  .prize-card{min-height:170px!important}
-  .prize-media{width:136px!important;flex-basis:136px!important;min-height:170px!important}
-  .prize-copy{padding:15px 14px!important}
-  .price-label{font-size:27px!important}
-  .prize-name{font-size:17px!important;line-height:1.25!important}
-  .long-prize{font-size:15px!important;line-height:1.28!important}
-}
-
-@media(max-width:390px){
-  .prize-card{min-height:162px!important}
-  .prize-media{width:128px!important;flex-basis:128px!important;min-height:162px!important}
-  .prize-copy{padding:13px 12px!important;gap:7px!important}
-  .price-label{font-size:25px!important}
-  .prize-name{font-size:16px!important}
-  .long-prize{font-size:14px!important}
-}
+@supports (-webkit-touch-callout:none){.clickable-glow{transform:translateZ(0)}.prize-card{min-height:170px!important}.prize-media{width:136px!important;flex-basis:136px!important;min-height:170px!important}.prize-copy{padding:15px 14px!important}.price-label{font-size:27px!important}.prize-name{font-size:17px!important;line-height:1.25!important}.long-prize{font-size:15px!important;line-height:1.28!important}}
+@media(max-width:390px){.prize-card{min-height:162px!important}.prize-media{width:128px!important;flex-basis:128px!important;min-height:162px!important}.prize-copy{padding:13px 12px!important;gap:7px!important}.price-label{font-size:25px!important}.prize-name{font-size:16px!important}.long-prize{font-size:14px!important}}
