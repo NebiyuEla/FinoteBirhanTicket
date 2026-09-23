@@ -1,0 +1,38 @@
+name: Extract Finote Ticket Bot Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bot/finotebirhan-ticket-bot-fixed-v13.zip'
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('bot/finotebirhan-ticket-bot-fixed-v13.zip') != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract backend source
+        run: |
+          rm -rf bot/backend
+          mkdir -p bot/backend
+          unzip -q bot/finotebirhan-ticket-bot-fixed-v13.zip -d bot/backend
+
+      - name: Commit extracted backend source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot/backend
+          if git diff --cached --quiet; then
+            echo "No backend source changes to commit."
+            exit 0
+          fi
+          git commit -m "feat: add Finote ticket bot backend source"
+          git push
