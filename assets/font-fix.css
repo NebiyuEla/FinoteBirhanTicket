@@ -1,0 +1,6 @@
+@font-face{font-family:"Nokia Pureheadline";src:url("./NokiaPureheadlineFinot.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
+:root{--font-en:"Nokia Pureheadline",Arial,sans-serif;--font-am:"Noto Sans Ethiopic","Nyala","Abyssinica SIL",system-ui,sans-serif}
+html[lang="am"] body,html[lang="am"] button,html[lang="am"] input{font-family:var(--font-am)!important}
+html[lang="am"] h1,html[lang="am"] h2,html[lang="am"] h3,html[lang="am"] p,html[lang="am"] span,html[lang="am"] strong,html[lang="am"] small{font-family:var(--font-am)!important}
+html[lang="en"] body,html[lang="en"] button,html[lang="en"] input,html[lang="en"] h1,html[lang="en"] h2,html[lang="en"] h3,html[lang="en"] p,html[lang="en"] span,html[lang="en"] strong,html[lang="en"] small{font-family:var(--font-en)!important}
+.ticket-price>span,.price-label{font-family:var(--font-en)!important}
