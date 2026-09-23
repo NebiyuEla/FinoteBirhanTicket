@@ -8,6 +8,18 @@
   <title>ፍኖተ ብርሃን ዕጣ</title>
   <link rel="icon" href="./logo.svg" />
   <link rel="stylesheet" href="./styles.css" />
+  <style>
+    /* Keep the action footer visible for both bundle and single-ticket number screens. */
+    .number-screen.visible{min-height:0!important}
+    .selection-shell{display:flex!important;flex-direction:column!important;min-height:0!important;overflow:hidden!important}
+    .pool-tabs,.legend{flex:0 0 auto!important}
+    .number-box{flex:1 1 0!important;min-height:0!important;height:auto!important;overflow:hidden!important}
+    .number-grid{height:100%!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important}
+    .bottom-action-area{flex:0 0 auto!important;position:relative!important;z-index:20!important;background:rgba(255,253,248,.98)!important;padding-top:2px!important;padding-bottom:max(2px,env(safe-area-inset-bottom))!important}
+    .primary-btn{visibility:visible!important;display:block!important}
+    .contain-media img{object-fit:contain!important;object-position:center!important;background:#f7f1e7!important}
+    @media(max-width:390px){.bottom-action-area{grid-template-columns:1fr!important}.selection-summary{min-height:42px!important}.primary-btn{min-height:58px!important}}
+  </style>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -53,8 +65,8 @@
           </button>
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="200">
-            <div class="prize-media contain-media"><img id="ticket200Image" src="./assets/ticket-200.webp" alt="200 ብር ዕጣ" /></div>
-            <div class="prize-copy"><span class="price-label">200 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize200">የእምቤታችን ምስለ ሰዕል</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
+            <div class="prize-media contain-media"><img id="ticket200Image" src="./assets/ticket-200.webp?v=20260923-1814" alt="St Mary ምስለ ሰዕል" /></div>
+            <div class="prize-copy"><span class="price-label">200 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize200">የSt Mary ምስለ ሰዕል</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
           </button>
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="100">
@@ -64,7 +76,7 @@
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="50">
             <div class="prize-media"><img id="ticket50Image" src="./logo.svg" alt="50 ብር ዕጣ" /></div>
-            <div class="prize-copy"><span class="price-label">50 <span data-i18n="birr">ብር</span></span><strong class="prize-name long-prize" id="prize50">ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የእመቤታችን ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
+            <div class="prize-copy"><span class="price-label">50 <span data-i18n="birr">ብር</span></span><strong class="prize-name long-prize" id="prize50">ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የSt Mary ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
           </button>
         </div>
       </div>
@@ -79,12 +91,30 @@
         <div class="pool-tabs hidden" id="tabs"><button type="button" class="pool-tab active" data-pool="200">200 <span data-i18n="birr">ብር</span><b id="v200">—</b></button><button type="button" class="pool-tab" data-pool="100">100 <span data-i18n="birr">ብር</span><b id="v100">—</b></button><button type="button" class="pool-tab" data-pool="50">50 <span data-i18n="birr">ብር</span><b id="v50">—</b></button></div>
         <div class="legend"><span><i class="dot available"></i><span data-i18n="available">ያለ</span></span><span><i class="dot selected"></i><span data-i18n="selected">የተመረጠ</span></span><span><i class="dot taken"></i><span data-i18n="taken">የተወሰደ</span></span></div>
         <div class="number-box"><div class="number-grid" id="numberGrid" aria-label="Ticket numbers"></div></div>
-        <div class="bottom-action-area"><div class="selection-summary" id="summary">ለመቀጠል ቁጥር ይምረጡ።</div><button class="primary-btn glow-action" id="confirmBtn" type="button" disabled data-i18n="reserveContinue">ያስይዙ እና ይቀጥሉ</button></div>
+        <div class="bottom-action-area"><div class="selection-summary" id="summary">ለመቀጠል ቁጥር ይምረጡ።</div><button class="primary-btn glow-action" id="confirmBtn" type="button" disabled data-i18n="reserveContinue">ይያዙ እና ይክፈሉ</button></div>
       </div>
     </section>
 
     <section class="screen" data-screen="error"><div class="state-card"><img src="./logo.svg" alt="" /><h2 data-i18n="expiredTitle">ሊንኩ አልፎታል</h2><p data-i18n="expiredText">ወደ ቦቱ ይመለሱ እና “ትኬት ይግዙ” በመጫን እንደገና ይክፈቱ።</p></div></section>
   </main>
   <script src="./app.js"></script>
+  <script>
+    (function () {
+      function applyCopyFixes() {
+        var lang = (localStorage.getItem('finote_lang') || document.documentElement.lang || 'am').toLowerCase().startsWith('en') ? 'en' : 'am';
+        var p200 = document.getElementById('prize200');
+        var p50 = document.getElementById('prize50');
+        var confirm = document.getElementById('confirmBtn');
+        if (p200) p200.textContent = lang === 'en' ? 'St Mary icon' : 'የSt Mary ምስለ ሰዕል';
+        if (p50) p50.textContent = lang === 'en' ? 'Netela, 4:3 epoxy St Mary icon & Zemare Heran key holder' : 'ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የSt Mary ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ';
+        if (confirm && !confirm.disabled) confirm.textContent = lang === 'en' ? 'Reserve & Pay' : 'ይያዙ እና ይክፈሉ';
+        if (confirm && confirm.disabled && confirm.textContent !== 'በመላክ ላይ…' && confirm.textContent !== 'Sending…') confirm.textContent = lang === 'en' ? 'Reserve & Pay' : 'ይያዙ እና ይክፈሉ';
+      }
+      applyCopyFixes();
+      document.addEventListener('click', function (event) {
+        if (event.target.closest('[data-lang-control],#langToggle,[data-number],[data-ticket]')) setTimeout(applyCopyFixes, 0);
+      });
+    })();
+  </script>
 </body>
 </html>
