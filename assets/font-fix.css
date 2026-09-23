@@ -1,4 +1,5 @@
-:root{--font-en:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--font-am:"Noto Sans Ethiopic","Nyala","Abyssinica SIL",system-ui,sans-serif}
+:root{--font-en:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--font-am:"Noto Sans Ethiopic","Abyssinica SIL","Nyala",system-ui,sans-serif}
+html,body{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html[lang="am"] body,html[lang="am"] button,html[lang="am"] input,html[lang="am"] h1,html[lang="am"] h2,html[lang="am"] h3,html[lang="am"] p,html[lang="am"] span,html[lang="am"] strong,html[lang="am"] small{font-family:var(--font-am)!important}
 html[lang="en"] body,html[lang="en"] button,html[lang="en"] input,html[lang="en"] h1,html[lang="en"] h2,html[lang="en"] h3,html[lang="en"] p,html[lang="en"] span,html[lang="en"] strong,html[lang="en"] small{font-family:var(--font-en)!important}
 html[lang="en"] body{letter-spacing:-.01em}
@@ -6,6 +7,44 @@ html[lang="en"] h1,html[lang="en"] h2,html[lang="en"] h3,html[lang="en"] strong,
 html[lang="en"] p,html[lang="en"] small,html[lang="en"] .tap-label{font-weight:700!important;letter-spacing:-.005em}
 html[lang="am"] h1,html[lang="am"] h2,html[lang="am"] h3,html[lang="am"] strong,html[lang="am"] button,.price-label,.ticket-price>span{font-weight:800!important}
 html[lang="am"] p,html[lang="am"] small,html[lang="am"] .tap-label{font-weight:700!important}
-/* Telegram WebView was failing the JS-generated data URI for the 200 ETB image. Render the verified static asset directly instead. */
-.contain-media{background:#f7f1e7 url("./ticket-200.webp?v=20260923-2032") center/contain no-repeat!important}
-#ticket200Image{opacity:0!important;display:block!important;width:100%!important;height:100%!important}
+
+/* iOS Telegram WebView: remove native button rendering and avoid grid/button paint glitches. */
+button,.ticket-card{-webkit-appearance:none!important;appearance:none!important}
+.ticket-card{width:100%!important;margin:0!important;-webkit-text-fill-color:currentColor!important}
+.prize-card{display:flex!important;grid-template-columns:none!important;align-items:stretch!important;min-height:176px!important;position:relative!important;isolation:isolate!important;background:#fff!important;overflow:hidden!important}
+.prize-media{width:142px!important;flex:0 0 142px!important;min-height:176px!important;height:auto!important;position:relative!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important}
+.prize-copy{flex:1 1 auto!important;min-width:0!important;display:flex!important;flex-direction:column!important;justify-content:center!important;gap:9px!important;padding:16px!important;position:relative!important;z-index:2!important;opacity:1!important;visibility:visible!important;color:var(--text)!important;-webkit-text-fill-color:var(--text)!important;background:#fff!important}
+.prize-copy .price-label{display:block!important;color:var(--blue-deep)!important;-webkit-text-fill-color:var(--blue-deep)!important;opacity:1!important;visibility:visible!important}
+.prize-copy .prize-name{display:block!important;color:var(--text)!important;-webkit-text-fill-color:var(--text)!important;opacity:1!important;visibility:visible!important;overflow-wrap:anywhere!important}
+.prize-copy .tap-label{display:block!important;color:var(--blue)!important;-webkit-text-fill-color:var(--blue)!important;opacity:1!important;visibility:visible!important}
+
+/* Always render the 200 ETB St Mary image from the verified static asset. The background is also a fallback if WebKit refuses the img source. */
+.contain-media{background:#f7f1e7 url("/assets/ticket-200.webp?v=ios-20260923-1") center/contain no-repeat!important}
+#ticket200Image{opacity:1!important;visibility:visible!important;display:block!important;width:100%!important;height:100%!important;object-fit:contain!important;object-position:center!important;padding:8px!important;background:transparent!important;font-size:0!important;color:transparent!important}
+#ticket200Image[src="./logo.svg"],#ticket200Image:not([src]){opacity:0!important}
+
+/* Stable mobile viewport and scroll containment for Telegram on iPhone. */
+.app{height:var(--app-height,100svh)!important;max-height:var(--app-height,100svh)!important;min-height:0!important;padding-bottom:max(14px,env(safe-area-inset-bottom))!important}
+.ticket-screen{min-height:0!important;overflow:hidden!important}
+.ticket-scroll{min-height:0!important;flex:1 1 auto!important;overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important;overscroll-behavior:contain!important;padding-bottom:max(28px,calc(16px + env(safe-area-inset-bottom)))!important}
+.ticket-grid{width:100%!important}
+.number-grid{-webkit-overflow-scrolling:touch!important}
+
+@supports (-webkit-touch-callout:none){
+  .clickable-glow{transform:translateZ(0)}
+  .prize-card{min-height:170px!important}
+  .prize-media{width:136px!important;flex-basis:136px!important;min-height:170px!important}
+  .prize-copy{padding:15px 14px!important}
+  .price-label{font-size:27px!important}
+  .prize-name{font-size:17px!important;line-height:1.25!important}
+  .long-prize{font-size:15px!important;line-height:1.28!important}
+}
+
+@media(max-width:390px){
+  .prize-card{min-height:162px!important}
+  .prize-media{width:128px!important;flex-basis:128px!important;min-height:162px!important}
+  .prize-copy{padding:13px 12px!important;gap:7px!important}
+  .price-label{font-size:25px!important}
+  .prize-name{font-size:16px!important}
+  .long-prize{font-size:14px!important}
+}
