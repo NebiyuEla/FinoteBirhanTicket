@@ -48,7 +48,7 @@
   const sellerLine = document.getElementById('sellerLine');
 
   sellerLine.textContent = sellerName ? `በ${sellerName} በኩል ግዢ` : 'ትኬት ይምረጡ';
-  startMiniCarousel();
+  loadTicketImages();
 
   if (!session || !tg?.sendData) show('error');
 
@@ -117,15 +117,32 @@
     }
   });
 
-  function startMiniCarousel() {
-    const slides = [...document.querySelectorAll('#ticket100Carousel .mini-slide')];
-    if (slides.length < 2) return;
-    let index = 0;
-    setInterval(() => {
-      slides[index].classList.remove('active');
-      index = (index + 1) % slides.length;
-      slides[index].classList.add('active');
-    }, 2500);
+  async function loadTicketImages() {
+    const definitions = [
+      {
+        id: 'ticket100Image',
+        parts: ['./assets/ticket-100-1.txt', './assets/ticket-100-2.txt']
+      },
+      {
+        id: 'ticket50Image',
+        parts: ['./assets/ticket-50-1.txt', './assets/ticket-50-2.txt']
+      }
+    ];
+
+    await Promise.all(definitions.map(async ({ id, parts }) => {
+      const image = document.getElementById(id);
+      if (!image) return;
+      try {
+        const chunks = await Promise.all(parts.map(async (path) => {
+          const response = await fetch(path, { cache: 'force-cache' });
+          if (!response.ok) throw new Error(`Unable to load ${path}`);
+          return response.text();
+        }));
+        image.src = `data:image/webp;base64,${chunks.join('')}`;
+      } catch {
+        image.src = './logo.svg';
+      }
+    }));
   }
 
   function show(name) {
