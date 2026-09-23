@@ -2,115 +2,122 @@
 <html lang="am">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f7f1e7" />
   <meta name="description" content="FinoteBirhan digital ticket Telegram Mini App" />
   <title>ፍኖተ ብርሃን ዕጣ</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@600;700;800;900&display=swap" rel="stylesheet">
   <link rel="icon" href="./logo.svg" />
   <link rel="stylesheet" href="./styles.css" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
-<main class="app">
-  <header class="topbar">
-    <img src="./logo.svg" class="brand-logo" alt="ፍኖተ ብርሃን ዕጣ" />
-    <div class="brand-copy">
-      <span>ፍኖተ ብርሃን ሰ/ት/ቤት</span>
-      <h1>ዕጣ ትኬት</h1>
-      <p id="sellerLine">ትኬት ይምረጡ</p>
-    </div>
-  </header>
-
-  <section class="screen visible" data-screen="ticket">
-    <div class="section-head">
-      <div><b>01</b><h2>ትኬት ይምረጡ</h2></div>
-      <p>አንዱን ይጫኑ። ከዚያ ቁጥር ይምረጡ።</p>
-    </div>
-
-    <div class="ticket-grid" id="ticketGrid">
-      <button class="ticket-card bundle" data-ticket="bundle" type="button">
-        <div class="ticket-media logo-media"><img src="./logo.svg" alt="" /></div>
-        <div class="ticket-info">
-          <span class="badge">ቅናሽ</span>
-          <strong>የሶስቱም ፓኬጅ</strong>
-          <div class="price">300 <small>ETB</small></div>
-          <small class="desc">200 + 100 + 50 ብር</small>
-        </div>
-        <span class="old-price">350 ETB</span>
-      </button>
-
-      <button class="ticket-card" data-ticket="200" type="button">
-        <div class="ticket-media slideshow" id="ticketSlideshow">
-          <img class="active" src="./assets/ticket-200-1.webp" alt="200 ETB ticket prize" />
-          <img src="./assets/ticket-200-2.webp" alt="200 ETB ticket prize" />
-          <img src="./assets/ticket-200-3.webp" alt="200 ETB ticket prize" />
-        </div>
-        <div class="ticket-info">
-          <strong>200 ብር</strong>
-          <div class="price">200 <small>ETB</small></div>
-          <small class="desc">1 ቁጥር · 001–200</small>
-        </div>
-      </button>
-
-      <button class="ticket-card" data-ticket="100" type="button">
-        <div class="ticket-media logo-media"><img src="./logo.svg" alt="" /></div>
-        <div class="ticket-info">
-          <strong>100 ብር</strong>
-          <div class="price">100 <small>ETB</small></div>
-          <small class="desc">1 ቁጥር · 001–200</small>
-        </div>
-      </button>
-
-      <button class="ticket-card" data-ticket="50" type="button">
-        <div class="ticket-media logo-media"><img src="./logo.svg" alt="" /></div>
-        <div class="ticket-info">
-          <strong>50 ብር</strong>
-          <div class="price">50 <small>ETB</small></div>
-          <small class="desc">1 ቁጥር · 001–200</small>
-        </div>
-      </button>
-    </div>
-  </section>
-
-  <section class="screen" data-screen="numbers">
-    <div class="section-head row">
-      <div>
-        <div><b>02</b><h2>ቁጥር ይምረጡ</h2></div>
-        <p id="numberHelp">ከ001–200 ያልተወሰደ ቁጥር ይምረጡ።</p>
+  <main class="app" id="app">
+    <header class="brand-card" id="brandCard">
+      <img src="./logo.svg" alt="ፍኖተ ብርሃን ዕጣ" class="brand-logo" />
+      <div class="brand-copy">
+        <span class="brand-kicker">ፍኖተ ብርሃን ሰ/ት/ቤት</span>
+        <h1>ዕጣ ትኬት</h1>
+        <p id="sellerLine">ትኬት ይምረጡ</p>
       </div>
-      <button class="back-btn" id="backBtn" type="button">ተመለስ</button>
-    </div>
+    </header>
 
-    <div class="number-shell">
-      <div class="pool-tabs hidden" id="tabs">
-        <button class="pool-tab active" data-pool="200" type="button">200 ብር <b id="v200">—</b></button>
-        <button class="pool-tab" data-pool="100" type="button">100 ብር <b id="v100">—</b></button>
-        <button class="pool-tab" data-pool="50" type="button">50 ብር <b id="v50">—</b></button>
+    <section class="screen visible" data-screen="ticket">
+      <div class="section-head compact">
+        <div>
+          <h2>ትኬት ይምረጡ</h2>
+          <p>ዋጋውን ይምረጡ፣ ከዚያ ቁጥር ያስይዙ።</p>
+        </div>
       </div>
 
-      <div class="legend">
-        <span><i class="dot available"></i>ያለ</span>
-        <span><i class="dot selected"></i>የተመረጠ</span>
-        <span><i class="dot taken"></i>የተወሰደ</span>
+      <div class="ticket-grid" id="ticketGrid">
+        <button class="ticket-card bundle" type="button" data-ticket="bundle">
+          <div class="bundle-copy">
+            <span class="badge">ቅናሽ</span>
+            <strong>የሶስቱም ፓኬጅ</strong>
+            <small>200 + 100 + 50 ብር ዕጣ</small>
+          </div>
+          <div class="bundle-price">
+            <span class="old-price">350 ETB</span>
+            <div class="ticket-price"><span>300</span><b>ETB</b></div>
+          </div>
+        </button>
+
+        <div class="standard-row">
+          <button class="ticket-card standard" type="button" data-ticket="200">
+            <div class="card-media brand-media">
+              <img src="./logo.svg" alt="" />
+            </div>
+            <div class="standard-copy">
+              <strong>200 ብር</strong>
+              <span>200 ETB</span>
+            </div>
+          </button>
+
+          <button class="ticket-card standard product-card" type="button" data-ticket="100">
+            <div class="card-media mini-carousel" id="ticket100Carousel" aria-label="100 ETB ticket item images">
+              <img class="mini-slide active" src="./assets/ticket-200-1.webp" alt="100 ETB ticket item" />
+              <img class="mini-slide" src="./assets/ticket-200-2.webp" alt="100 ETB ticket item" />
+              <img class="mini-slide" src="./assets/ticket-200-3.webp" alt="100 ETB ticket item" />
+              <span class="image-badge">100</span>
+            </div>
+            <div class="standard-copy">
+              <strong>100 ብር</strong>
+              <span>100 ETB</span>
+            </div>
+          </button>
+
+          <button class="ticket-card standard" type="button" data-ticket="50">
+            <div class="card-media brand-media gold-media">
+              <img src="./logo.svg" alt="" />
+            </div>
+            <div class="standard-copy">
+              <strong>50 ብር</strong>
+              <span>50 ETB</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" data-screen="numbers">
+      <div class="number-head">
+        <div>
+          <h2>ቁጥር ይምረጡ</h2>
+          <p id="numberHelp">ከ001–200 ያልተወሰደ ቁጥር ይምረጡ።</p>
+        </div>
+        <button class="back-btn" id="backBtn" type="button">ተመለስ</button>
       </div>
 
-      <div class="number-box"><div class="number-grid" id="numberGrid"></div></div>
-      <div class="selection-summary" id="summary">ለመቀጠል ቁጥር ይምረጡ።</div>
-      <button class="primary-btn" id="confirmBtn" type="button" disabled>ያስይዙ እና ይቀጥሉ</button>
-    </div>
-  </section>
+      <div class="selection-shell">
+        <div class="pool-tabs hidden" id="tabs">
+          <button type="button" class="pool-tab active" data-pool="200">200 ብር <b id="v200">—</b></button>
+          <button type="button" class="pool-tab" data-pool="100">100 ብር <b id="v100">—</b></button>
+          <button type="button" class="pool-tab" data-pool="50">50 ብር <b id="v50">—</b></button>
+        </div>
 
-  <section class="screen" data-screen="error">
-    <div class="state-card">
-      <img src="./logo.svg" alt="" />
-      <h2>ሊንኩ አልፎታል</h2>
-      <p>ከቦቱ ውስጥ Buy Ticket በመጫን እንደገና ይክፈቱ።</p>
-    </div>
-  </section>
-</main>
-<script src="./app.js"></script>
+        <div class="legend">
+          <span><i class="dot available"></i>ያለ</span>
+          <span><i class="dot selected"></i>የተመረጠ</span>
+          <span><i class="dot taken"></i>የተወሰደ</span>
+        </div>
+
+        <div class="number-box">
+          <div class="number-grid" id="numberGrid" aria-label="Ticket numbers"></div>
+        </div>
+
+        <div class="selection-summary" id="summary">ለመቀጠል ቁጥር ይምረጡ።</div>
+        <button class="primary-btn" id="confirmBtn" type="button" disabled>ያስይዙ እና ይቀጥሉ</button>
+      </div>
+    </section>
+
+    <section class="screen" data-screen="error">
+      <div class="state-card">
+        <img src="./logo.svg" alt="" />
+        <h2>ሊንኩ አልፎታል</h2>
+        <p>ወደ ቦቱ ይመለሱ እና Buy Ticket በመጫን እንደገና ይክፈቱ።</p>
+      </div>
+    </section>
+  </main>
+  <script src="./app.js"></script>
 </body>
 </html>
