@@ -7,7 +7,11 @@
   <meta name="description" content="FinoteBirhan digital ticket Telegram Mini App" />
   <title>ፍኖተ ብርሃን ዕጣ</title>
   <link rel="icon" href="./logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./assets/font-fix.css?v=20260923-1935" />
   <style>
     .number-screen.visible{min-height:0!important}
     .selection-shell{display:flex!important;flex-direction:column!important;min-height:0!important;overflow:hidden!important}
@@ -17,6 +21,7 @@
     .bottom-action-area{flex:0 0 auto!important;position:relative!important;z-index:20!important;background:rgba(255,253,248,.98)!important;padding-top:2px!important;padding-bottom:max(2px,env(safe-area-inset-bottom))!important}
     .primary-btn{visibility:visible!important;display:block!important}
     .contain-media img{object-fit:contain!important;object-position:center!important;background:#f7f1e7!important}
+    #ticket200Image{object-fit:contain!important;object-position:center!important;padding:8px!important;background:#f7f1e7!important}
     @media(max-width:390px){.bottom-action-area{grid-template-columns:1fr!important}.selection-summary{min-height:42px!important}.primary-btn{min-height:58px!important}}
   </style>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -64,13 +69,13 @@
           </button>
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="200">
-            <div class="prize-media contain-media"><img id="ticket200Image" src="./assets/ticket-200.webp?v=20260923-1926" alt="የቅድስት ማርያም ምስለ ሰዕል" /></div>
+            <div class="prize-media contain-media"><img id="ticket200Image" src="./logo.svg" alt="የቅድስት ማርያም ምስለ ሰዕል" /></div>
             <div class="prize-copy"><span class="price-label">200 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize200">የቅድስት ማርያም ምስለ ሰዕል</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
           </button>
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="100">
             <div class="prize-media"><img id="ticket100Image" src="./logo.svg" alt="100 ብር ዕጣ" /></div>
-            <div class="prize-copy"><span class="price-label">100 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize100">በእንጨት የተሰራ መጽሐፍ ቅዱስ</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
+            <div class="prize-copy"><span class="price-label">100 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize100">በእንጨት የተደጎሰ መጽሐፍ ቅዱስ</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
           </button>
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="50">
@@ -99,16 +104,30 @@
   <script src="./app.js"></script>
   <script>
     (function () {
+      async function loadExact200Image() {
+        var img = document.getElementById('ticket200Image');
+        if (!img) return;
+        try {
+          var response = await fetch('./assets/ticket-200-v2.txt?v=20260923-1935', { cache: 'no-store' });
+          if (!response.ok) throw new Error('image payload');
+          var b64 = (await response.text()).trim();
+          img.src = 'data:image/webp;base64,' + b64;
+        } catch (e) {
+          img.src = './assets/ticket-200.webp?v=20260923-1935';
+        }
+      }
       function applyCopyFixes() {
         var lang = (localStorage.getItem('finote_lang') || document.documentElement.lang || 'am').toLowerCase().startsWith('en') ? 'en' : 'am';
         var p200 = document.getElementById('prize200');
+        var p100 = document.getElementById('prize100');
         var p50 = document.getElementById('prize50');
         var confirm = document.getElementById('confirmBtn');
-        if (p200) p200.textContent = lang === 'en' ? 'St Mary icon' : 'የቅድስት ማርያም ምስለ ሰዕል';
+        if (p200) p200.textContent = lang === 'en' ? 'St Mary Icon' : 'የቅድስት ማርያም ምስለ ሰዕል';
+        if (p100) p100.textContent = lang === 'en' ? 'Handcrafted Wooden Bible' : 'በእንጨት የተደጎሰ መጽሐፍ ቅዱስ';
         if (p50) p50.textContent = lang === 'en' ? 'Netela, 4:3 epoxy St Mary icon & Zemare Heran key holder' : 'ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የቅድስት ማርያም ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ';
-        if (confirm && !confirm.disabled) confirm.textContent = lang === 'en' ? 'Reserve & Pay' : 'ይያዙ እና ይክፈሉ';
-        if (confirm && confirm.disabled && confirm.textContent !== 'በመላክ ላይ…' && confirm.textContent !== 'Sending…') confirm.textContent = lang === 'en' ? 'Reserve & Pay' : 'ይያዙ እና ይክፈሉ';
+        if (confirm && confirm.textContent !== 'በመላክ ላይ…' && confirm.textContent !== 'Sending…') confirm.textContent = lang === 'en' ? 'Reserve & Pay' : 'ይያዙ እና ይክፈሉ';
       }
+      loadExact200Image();
       applyCopyFixes();
       document.addEventListener('click', function (event) {
         if (event.target.closest('[data-lang-control],#langToggle,[data-number],[data-ticket]')) setTimeout(applyCopyFixes, 0);
