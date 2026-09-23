@@ -8,63 +8,68 @@
   <title>ፍኖተ ብርሃን ዕጣ</title>
   <link rel="icon" href="./logo.svg" />
   <link rel="stylesheet" href="./styles.css" />
-  <style>
-    html,body{height:100%;min-height:100%;max-height:100%;overflow:hidden!important;overscroll-behavior:none!important}
-    body{position:fixed!important;inset:0!important;width:100%!important;touch-action:none!important}
-    .app{height:var(--app-height,100dvh)!important;max-height:var(--app-height,100dvh)!important;overflow:hidden!important;padding:6px 8px max(8px,env(safe-area-inset-bottom))!important}
-    .brand-card{height:60px!important;flex-basis:60px!important;margin-bottom:6px!important;padding:6px 9px!important}.brand-logo{width:46px!important;height:46px!important}.brand-copy h1{font-size:25px!important}.brand-kicker{font-size:10px!important}.brand-copy p{font-size:12px!important}
-    .section-head{margin:2px 2px 6px!important}.section-head h2,.number-head h2{font-size:24px!important}.section-head p,.number-head p{font-size:12px!important;margin-top:2px!important}
-    .ticket-grid{gap:7px!important;overflow:hidden!important}.ticket-card.bundle{height:54px!important;min-height:54px!important;flex-basis:54px!important;padding:6px 10px!important;border-radius:15px!important}.badge{font-size:8px!important;padding:2px 6px!important;margin-bottom:1px!important}.bundle-copy strong{font-size:17px!important}.bundle-copy small{font-size:8px!important;margin-top:1px!important}.old-price{font-size:9px!important}.ticket-price span{font-size:26px!important}.ticket-price b{font-size:10px!important}
-    .standard-row{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;align-items:start!important;justify-items:stretch!important;overflow:hidden!important}.ticket-card.standard{width:100%!important;aspect-ratio:1/1!important;border-radius:16px!important}.card-media{height:64%!important}.standard-copy{height:36%!important;padding:5px 6px!important}.standard-copy strong{font-size:15px!important}.standard-copy span{font-size:10px!important;margin-top:2px!important}.product-media{background:#eee!important}.product-image{width:100%!important;height:100%!important;display:block!important;object-fit:cover!important}
-    .seller-form{display:grid;grid-template-rows:auto auto auto 1fr auto;gap:9px;min-height:0;flex:1;padding:8px;border:1px solid var(--line);border-radius:18px;background:rgba(255,253,248,.82);overflow:hidden}.seller-field{display:grid;gap:4px}.seller-field span{font-size:11px;font-weight:900;color:var(--muted)}.seller-field input{width:100%;height:48px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:0 12px;color:var(--text);font:inherit;font-size:16px;font-weight:900;outline:none;touch-action:auto}.seller-field input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(243,181,27,.14)}.pay-title{font-size:11px;font-weight:900;color:var(--muted);margin-bottom:4px}.pay-options{display:grid;grid-template-columns:1fr 1fr;gap:7px}.pay-option{min-height:52px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:13px;font-weight:900;cursor:pointer}.pay-option.active{border-color:var(--gold);background:#fff4cf;color:var(--blue-deep)}.pay-option:disabled{opacity:.42;cursor:not-allowed}.seller-note{align-self:start;padding:9px 10px;border-radius:13px;background:var(--surface-2);font-size:11px;line-height:1.35;color:var(--muted);font-weight:800}.seller-next{height:54px;border:0;border-radius:16px;background:linear-gradient(135deg,var(--gold),#efa707);color:#173b50;font-size:19px;font-weight:900;box-shadow:var(--shadow);cursor:pointer}.seller-buyer-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;margin-bottom:6px;border:1px solid var(--line);border-radius:13px;background:var(--surface)}.seller-buyer-bar strong{display:block;font-size:12px}.seller-buyer-bar span{font-size:10px;color:var(--muted);font-weight:800}.seller-buyer-bar button{border:0;background:transparent;color:var(--blue-deep);font-weight:900;font-size:11px}.hidden{display:none!important}
-    .number-mode .brand-card{display:none!important}.number-mode .app{padding-top:5px!important}.screen[data-screen="numbers"].visible{display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;overflow:hidden!important;height:100%!important}.number-head{margin-bottom:4px!important;min-height:45px!important}.back-btn{padding:6px 9px!important;font-size:12px!important}.selection-shell{display:grid!important;grid-template-rows:auto auto minmax(0,1fr) auto 50px!important;gap:5px!important;padding:6px!important;overflow:hidden!important;min-height:0!important}.pool-tab{min-height:42px!important;font-size:12px!important}.pool-tab b{font-size:10px!important}.legend{font-size:9px!important;gap:6px!important}.number-box{min-height:0!important;height:auto!important;overflow:hidden!important;padding:4px!important}.number-grid{height:100%!important;overflow-y:auto!important;overflow-x:hidden!important;grid-template-columns:repeat(8,minmax(0,1fr))!important;gap:4px!important;touch-action:pan-y!important;overscroll-behavior:contain!important;padding-bottom:2px!important}.num{font-size:10px!important;border-radius:9px!important}.selection-summary{min-height:32px!important;padding:6px 8px!important;font-size:12px!important;line-height:1.1!important}.primary-btn{height:50px!important;min-height:50px!important;flex-basis:50px!important;font-size:18px!important;border-radius:15px!important}
-    @media(max-height:620px){.brand-card{height:54px!important;flex-basis:54px!important}.brand-logo{width:42px!important;height:42px!important}.section-head p{display:none!important}.ticket-card.bundle{height:48px!important;min-height:48px!important;flex-basis:48px!important}.bundle-copy small{display:none!important}.seller-field input{height:43px}.seller-form{gap:6px}.seller-next{height:48px}.number-head p{font-size:10px!important}.pool-tab{min-height:38px!important}.primary-btn{height:46px!important;min-height:46px!important}.selection-shell{grid-template-rows:auto auto minmax(0,1fr) auto 46px!important}}
-  </style>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <main class="app" id="app">
     <header class="brand-card" id="brandCard">
       <img src="./logo.svg" alt="ፍኖተ ብርሃን ዕጣ" class="brand-logo" />
-      <div class="brand-copy"><span class="brand-kicker">ፍኖተ ብርሃን ሰ/ት/ቤት</span><h1>ዕጣ ትኬት</h1><p id="sellerLine">ትኬት ይምረጡ</p></div>
+      <div class="brand-copy">
+        <span class="brand-kicker" data-i18n="brandKicker">ፍኖተ ብርሃን ሰ/ት/ቤት</span>
+        <h1 data-i18n="brandTitle">ዕጣ ትኬት</h1>
+        <p id="sellerLine">ትኬት ይምረጡ</p>
+      </div>
+      <button class="lang-toggle" id="langToggle" type="button" aria-label="Change language">EN</button>
     </header>
 
     <section class="screen" data-screen="sellerCustomer">
-      <div class="section-head"><h2>አዲስ ትኬት ሽያጭ</h2><p id="sellerIdentity">የገዢውን መረጃ ያስገቡ</p></div>
+      <div class="section-head roomy">
+        <div><h2 data-i18n="newSale">አዲስ ትኬት ሽያጭ</h2><p data-i18n="buyerInfo">የገዢውን መረጃ ያስገቡ</p></div>
+        <button class="mini-lang" data-lang-control type="button">EN</button>
+      </div>
       <div class="seller-form">
-        <label class="seller-field"><span>የገዢው ሙሉ ስም</span><input id="sellerBuyerName" autocomplete="name" maxlength="80" placeholder="Full name" /></label>
-        <label class="seller-field"><span>ስልክ ቁጥር</span><input id="sellerBuyerPhone" inputmode="tel" autocomplete="tel" maxlength="16" placeholder="09XXXXXXXX" /></label>
-        <div><div class="pay-title">ክፍያ የት ይገባ?</div><div class="pay-options"><button id="payFinote" class="pay-option active" type="button" data-pay="finote">ፍኖተ ብርሃን</button><button id="paySeller" class="pay-option" type="button" data-pay="seller">የእኔ አካውንት</button></div></div>
-        <div class="seller-note" id="sellerPaymentNote">ገዢው ወደ ፍኖተ ብርሃን አካውንት ይከፍላል። ክፍያውን ካረጋገጡ በኋላ SOLD ይጫኑ።</div>
-        <button class="seller-next" id="sellerContinue" type="button">ትኬት ይምረጡ →</button>
+        <label class="seller-field"><span data-i18n="buyerFullName">የገዢው ሙሉ ስም</span><input id="sellerBuyerName" autocomplete="name" maxlength="80" placeholder="ሙሉ ስም" /></label>
+        <label class="seller-field"><span data-i18n="phone">ስልክ ቁጥር</span><input id="sellerBuyerPhone" inputmode="tel" autocomplete="tel" maxlength="16" placeholder="09XXXXXXXX" /></label>
+        <div class="payment-section"><div class="pay-title" data-i18n="paymentDestination">ክፍያ የት ይገባ?</div><div class="pay-options"><button id="payFinote" class="pay-option active" type="button" data-pay="finote" data-i18n="finoteBirhan">ፍኖተ ብርሃን</button><button id="paySeller" class="pay-option" type="button" data-pay="seller" data-i18n="sellerAccount">የእኔ አካውንት</button></div></div>
+        <div class="seller-note" id="sellerPaymentNote"></div>
+        <button class="seller-next glow-action" id="sellerContinue" type="button" data-i18n="chooseTicketArrow">ትኬት ይምረጡ →</button>
       </div>
     </section>
 
     <section class="screen visible" data-screen="ticket">
-      <div class="section-head compact"><div><h2>ትኬት ይምረጡ</h2><p>ዋጋውን ይምረጡ፣ ከዚያ ቁጥር ያስይዙ።</p></div></div>
-      <div class="seller-buyer-bar hidden" id="sellerBuyerBar"><div><strong id="sellerBuyerLabel">Buyer</strong><span id="sellerBuyerMeta"></span></div><button id="editBuyer" type="button">ቀይር</button></div>
+      <div class="section-head roomy">
+        <div><h2 data-i18n="chooseTicket">ትኬት ይምረጡ</h2><p data-i18n="chooseTicketHint">የሚያሸንፉትን ሽልማት ይመልከቱ፣ ትኬት ይምረጡ።</p></div>
+        <button class="mini-lang" data-lang-control type="button">EN</button>
+      </div>
+      <div class="seller-buyer-bar hidden" id="sellerBuyerBar"><div><strong id="sellerBuyerLabel">Buyer</strong><span id="sellerBuyerMeta"></span></div><button id="editBuyer" type="button" data-i18n="edit">ቀይር</button></div>
       <div class="ticket-grid" id="ticketGrid">
-        <button class="ticket-card bundle" type="button" data-ticket="bundle"><div class="bundle-copy"><span class="badge">ቅናሽ</span><strong>ሶስቱም በአንድ</strong><small>3 ዕጣ · 1 ፓኬጅ</small></div><div class="bundle-price"><span class="old-price">350 ብር</span><div class="ticket-price"><span>300</span><b>ብር</b></div></div></button>
+        <button class="ticket-card bundle clickable-glow" type="button" data-ticket="bundle">
+          <div class="bundle-copy"><span class="badge" data-i18n="discount">ቅናሽ</span><strong data-i18n="bundleTitle">ሶስቱም በአንድ</strong><small data-i18n="bundlePrize">ሶስቱንም ሽልማቶች የማሸነፍ ዕድል</small></div>
+          <div class="bundle-price"><span class="old-price">350 <span data-i18n="birr">ብር</span></span><div class="ticket-price"><span>300</span><b data-i18n="birr">ብር</b></div></div>
+        </button>
         <div class="standard-row">
-          <button class="ticket-card standard" type="button" data-ticket="200"><div class="card-media brand-media"><img src="./logo.svg" alt="200 ብር" /></div><div class="standard-copy"><strong>200 ብር</strong><span>1ኛ ዕጣ</span></div></button>
-          <button class="ticket-card standard product-card" type="button" data-ticket="100"><div class="card-media product-media"><img id="ticket100Image" class="product-image" src="./logo.svg" alt="100 ብር ዕጣ" /></div><div class="standard-copy"><strong>100 ብር</strong><span>2ኛ ዕጣ</span></div></button>
-          <button class="ticket-card standard product-card" type="button" data-ticket="50"><div class="card-media product-media"><img id="ticket50Image" class="product-image" src="./logo.svg" alt="50 ብር ዕጣ" /></div><div class="standard-copy"><strong>50 ብር</strong><span>3ኛ ዕጣ</span></div></button>
+          <button class="ticket-card standard clickable-glow" type="button" data-ticket="200"><div class="card-media brand-media"><img src="./logo.svg" alt="200 ብር" /></div><div class="standard-copy"><span class="price-label">200 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize200">ዋና ሽልማት</strong></div></button>
+          <button class="ticket-card standard clickable-glow" type="button" data-ticket="100"><div class="card-media product-media"><img id="ticket100Image" class="product-image" src="./logo.svg" alt="100 ብር ዕጣ" /></div><div class="standard-copy"><span class="price-label">100 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize100">የእንጨት መጽሐፍ ቅዱስ</strong></div></button>
+          <button class="ticket-card standard clickable-glow" type="button" data-ticket="50"><div class="card-media product-media"><img id="ticket50Image" class="product-image" src="./logo.svg" alt="50 ብር ዕጣ" /></div><div class="standard-copy"><span class="price-label">50 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize50">የእመቤታችን ምስል + ቁልፍ ማንጠልጠያ</strong></div></button>
         </div>
       </div>
+      <p class="tap-hint" data-i18n="tapHint">አንዱን ትኬት በመጫን ቁጥር ይምረጡ</p>
     </section>
 
     <section class="screen" data-screen="numbers">
-      <div class="number-head"><div><h2>ቁጥር ይምረጡ</h2><p id="numberHelp">ከ001–200 ያልተወሰደ ቁጥር ይምረጡ።</p></div><button class="back-btn" id="backBtn" type="button">ተመለስ</button></div>
+      <div class="number-head">
+        <div><h2 data-i18n="chooseNumber">ቁጥር ይምረጡ</h2><p id="numberHelp">ከ001–200 አንድ ያልተወሰደ ቁጥር ይምረጡ።</p></div>
+        <div class="number-actions"><button class="mini-lang" data-lang-control type="button">EN</button><button class="back-btn" id="backBtn" type="button" data-i18n="back">ተመለስ</button></div>
+      </div>
       <div class="selection-shell">
-        <div class="pool-tabs hidden" id="tabs"><button type="button" class="pool-tab active" data-pool="200">200 ብር <b id="v200">—</b></button><button type="button" class="pool-tab" data-pool="100">100 ብር <b id="v100">—</b></button><button type="button" class="pool-tab" data-pool="50">50 ብር <b id="v50">—</b></button></div>
-        <div class="legend"><span><i class="dot available"></i>ያለ</span><span><i class="dot selected"></i>የተመረጠ</span><span><i class="dot taken"></i>የተወሰደ</span></div>
+        <div class="pool-tabs hidden" id="tabs"><button type="button" class="pool-tab active" data-pool="200">200 <span data-i18n="birr">ብር</span><b id="v200">—</b></button><button type="button" class="pool-tab" data-pool="100">100 <span data-i18n="birr">ብር</span><b id="v100">—</b></button><button type="button" class="pool-tab" data-pool="50">50 <span data-i18n="birr">ብር</span><b id="v50">—</b></button></div>
+        <div class="legend"><span><i class="dot available"></i><span data-i18n="available">ያለ</span></span><span><i class="dot selected"></i><span data-i18n="selected">የተመረጠ</span></span><span><i class="dot taken"></i><span data-i18n="taken">የተወሰደ</span></span></div>
         <div class="number-box"><div class="number-grid" id="numberGrid" aria-label="Ticket numbers"></div></div>
-        <div class="selection-summary" id="summary">ለመቀጠል ቁጥር ይምረጡ።</div>
-        <button class="primary-btn" id="confirmBtn" type="button" disabled>ያስይዙ እና ይቀጥሉ</button>
+        <div class="bottom-action-area"><div class="selection-summary" id="summary">ለመቀጠል ቁጥር ይምረጡ።</div><button class="primary-btn glow-action" id="confirmBtn" type="button" disabled data-i18n="reserveContinue">ያስይዙ እና ይቀጥሉ</button></div>
       </div>
     </section>
 
-    <section class="screen" data-screen="error"><div class="state-card"><img src="./logo.svg" alt="" /><h2>ሊንኩ አልፎታል</h2><p>ወደ ቦቱ ይመለሱ እና Buy Ticket በመጫን እንደገና ይክፈቱ።</p></div></section>
+    <section class="screen" data-screen="error"><div class="state-card"><img src="./logo.svg" alt="" /><h2 data-i18n="expiredTitle">ሊንኩ አልፎታል</h2><p data-i18n="expiredText">ወደ ቦቱ ይመለሱ እና “ትኬት ይግዙ” በመጫን እንደገና ይክፈቱ።</p></div></section>
   </main>
   <script src="./app.js"></script>
 </body>
