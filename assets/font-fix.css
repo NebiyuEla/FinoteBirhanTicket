@@ -1,6 +1,11 @@
-@font-face{font-family:"Nokia Pureheadline";src:url("./NokiaPureheadlineFinot.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
-:root{--font-en:"Nokia Pureheadline",Arial,sans-serif;--font-am:"Noto Sans Ethiopic","Nyala","Abyssinica SIL",system-ui,sans-serif}
-html[lang="am"] body,html[lang="am"] button,html[lang="am"] input{font-family:var(--font-am)!important}
-html[lang="am"] h1,html[lang="am"] h2,html[lang="am"] h3,html[lang="am"] p,html[lang="am"] span,html[lang="am"] strong,html[lang="am"] small{font-family:var(--font-am)!important}
+:root{--font-en:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--font-am:"Noto Sans Ethiopic","Nyala","Abyssinica SIL",system-ui,sans-serif}
+html[lang="am"] body,html[lang="am"] button,html[lang="am"] input,html[lang="am"] h1,html[lang="am"] h2,html[lang="am"] h3,html[lang="am"] p,html[lang="am"] span,html[lang="am"] strong,html[lang="am"] small{font-family:var(--font-am)!important}
 html[lang="en"] body,html[lang="en"] button,html[lang="en"] input,html[lang="en"] h1,html[lang="en"] h2,html[lang="en"] h3,html[lang="en"] p,html[lang="en"] span,html[lang="en"] strong,html[lang="en"] small{font-family:var(--font-en)!important}
-.ticket-price>span,.price-label{font-family:var(--font-en)!important}
+html[lang="en"] body{letter-spacing:-.01em}
+html[lang="en"] h1,html[lang="en"] h2,html[lang="en"] h3,html[lang="en"] strong,html[lang="en"] button,.ticket-price>span,.price-label{font-weight:800!important;letter-spacing:-.02em}
+html[lang="en"] p,html[lang="en"] small,html[lang="en"] .tap-label{font-weight:700!important;letter-spacing:-.005em}
+html[lang="am"] h1,html[lang="am"] h2,html[lang="am"] h3,html[lang="am"] strong,html[lang="am"] button,.price-label,.ticket-price>span{font-weight:800!important}
+html[lang="am"] p,html[lang="am"] small,html[lang="am"] .tap-label{font-weight:700!important}
+/* Telegram WebView was failing the JS-generated data URI for the 200 ETB image. Render the verified static asset directly instead. */
+.contain-media{background:#f7f1e7 url("./ticket-200.webp?v=20260923-2032") center/contain no-repeat!important}
+#ticket200Image{opacity:0!important;display:block!important;width:100%!important;height:100%!important}
