@@ -67,3 +67,5 @@ jobs:
           fi
           git commit -m "fix: update 100 ETB prize wording"
           git push origin HEAD:main
+
+# trigger: 2026-09-24
