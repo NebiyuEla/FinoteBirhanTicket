@@ -228,7 +228,7 @@ export class TicketDatabase {
       ['winners_published', 'false'],
       ['prize_200_am', 'የቅድስት ማርያም ምስለ ሰዕል'],
       ['prize_200_en', 'St Mary icon'],
-      ['prize_100_am', 'የእንጨት መጽሐፍ ቅዱስ'],
+      ['prize_100_am', 'በእንጨት የተደጎሰ መጽሐፍ ቅዱስ'],
       ['prize_100_en', 'Handcrafted Wooden Bible'],
       ['prize_50_am', 'ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የቅድስት ማርያም ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ'],
       ['prize_50_en', 'Netela, 4:3 epoxy St Mary icon and Zemare Heran keychain']
@@ -241,6 +241,7 @@ export class TicketDatabase {
     this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_200_am' AND value='ዋና ሽልማት'`).run('የቅድስት ማርያም ምስለ ሰዕል', now);
     this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_200_en' AND value='Grand Prize'`).run('St Mary icon', now);
     this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_100_en' AND value='Wooden Bible'`).run('Handcrafted Wooden Bible', now);
+    this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_100_am' AND value IN ('የእንጨት መጽሐፍ ቅዱስ','በእንጨት የተሰራ መጽሐፍ ቅዱስ')`).run('በእንጨት የተደጎሰ መጽሐፍ ቅዱስ', now);
     this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_50_am' AND value='የSt Mary ምስል + ቁልፍ ማንጠልጠያ'`).run('ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የቅድስት ማርያም ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ', now);
     this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_50_en' AND value='St Mary icon + keychain'`).run('Netela, 4:3 epoxy St Mary icon and Zemare Heran keychain', now);
     // V10 Amharic terminology migration: use ቅድስት ማርያም while preserving English 'St Mary'.
