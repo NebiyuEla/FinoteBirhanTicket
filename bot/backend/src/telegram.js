@@ -56,7 +56,28 @@ export class TelegramBotApi {
 }
 
 export function inlineKeyboard(rows) {
-  return { inline_keyboard: rows };
+  const normalizedRows = Array.isArray(rows) ? rows.map((row) => Array.isArray(row) ? [...row] : row) : rows;
+
+  // Payment-proof reviews must always let an administrator make a decision from
+  // the very first screenshot. Older review layouts only exposed Ask link +
+  // Reject until a reference existed, which unnecessarily blocked manual approval.
+  if (Array.isArray(normalizedRows)) {
+    const buttons = normalizedRows.flatMap((row) => Array.isArray(row) ? row : []);
+    const askReference = buttons.find((button) => String(button?.callback_data || '').startsWith('admin_pay_askref:'));
+    const hasManualApprove = buttons.some((button) => String(button?.callback_data || '').startsWith('admin_pay_ok:'));
+    const hasReject = buttons.some((button) => String(button?.callback_data || '').startsWith('admin_pay_no:'));
+
+    if (askReference && hasReject && !hasManualApprove) {
+      const purchaseId = String(askReference.callback_data).split(':')[1] || '';
+      if (purchaseId) {
+        normalizedRows.unshift([
+          { text: '✅ Approve manually', callback_data: `admin_pay_ok:${purchaseId}` }
+        ]);
+      }
+    }
+  }
+
+  return { inline_keyboard: normalizedRows };
 }
 
 export function replyKeyboard(rows, { resize = true, oneTime = false, placeholder = '' } = {}) {
