@@ -15,9 +15,9 @@ button,.ticket-card{-webkit-appearance:none!important;appearance:none!important}
 .prize-copy .price-label{display:block!important;color:var(--blue-deep)!important;-webkit-text-fill-color:var(--blue-deep)!important;opacity:1!important;visibility:visible!important}
 .prize-copy .prize-name{display:block!important;color:var(--text)!important;-webkit-text-fill-color:var(--text)!important;opacity:1!important;visibility:visible!important;overflow-wrap:anywhere!important}
 .prize-copy .tap-label{display:block!important;color:var(--blue)!important;-webkit-text-fill-color:var(--blue)!important;opacity:1!important;visibility:visible!important}
-/* 200 ETB image: use the original uploaded WebP directly. The JPEG fallback introduced a broken gray render in Telegram. */
-.contain-media{background:#f7f1e7 url("/assets/ticket-200.webp?v=fix-20260924-1205") center/contain no-repeat!important}
-#ticket200Image{opacity:0!important;visibility:hidden!important;display:block!important;width:100%!important;height:100%!important;pointer-events:none!important}
+/* 200 ETB image: render the original uploaded WebP as the actual image element, not a CSS background. */
+.contain-media{background:#f7f1e7!important}
+#ticket200Image{opacity:1!important;visibility:visible!important;display:block!important;width:100%!important;height:100%!important;object-fit:contain!important;object-position:center!important;padding:8px!important;background:#f7f1e7!important;pointer-events:none!important}
 .app{height:var(--app-height,100svh)!important;max-height:var(--app-height,100svh)!important;min-height:0!important;padding-bottom:max(14px,env(safe-area-inset-bottom))!important}
 .ticket-screen{min-height:0!important;overflow:hidden!important}
 .ticket-scroll{min-height:0!important;flex:1 1 auto!important;overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important;overscroll-behavior:contain!important;padding-bottom:max(28px,calc(16px + env(safe-area-inset-bottom)))!important}
