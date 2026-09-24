@@ -22,21 +22,15 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           path = Path('bot/backend/src/index.js')
           text = path.read_text(encoding='utf-8')
           old = "function prizeSetting(pool, lang) { return db.getSetting(`prize_${pool}_${lang === 'en' ? 'en' : 'am'}`) || ''; }"
-          new = """function prizeSetting(pool, lang) {
-  const language = lang === 'en' ? 'en' : 'am';
-  if (Number(pool) === 100 && language === 'am') return 'በእንጨት የተደጎሰ መጽሐፍ ቅዱስ';
-  return db.getSetting(`prize_${pool}_${language}`) || '';
-}"""
-          if old not in text:
-              if new not in text:
-                  raise SystemExit('prizeSetting function was not found in expected form')
-          else:
+          new = "function prizeSetting(pool, lang) {\n  const language = lang === 'en' ? 'en' : 'am';\n  if (Number(pool) === 100 && language === 'am') return 'በእንጨት የተደጎሰ መጽሐፍ ቅዱስ';\n  return db.getSetting(`prize_${pool}_${language}`) || '';\n}"
+          if old in text:
               text = text.replace(old, new, 1)
               path.write_text(text, encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('prizeSetting function was not found in expected form')
           PY
 
       - name: Syntax check
