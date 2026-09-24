@@ -25,7 +25,11 @@ bootstrapRuntimeSettings();
 
 function langOf(telegramId) { return db.getUserLanguage(telegramId); }
 function tr(telegramId, am, en) { return langOf(telegramId) === 'en' ? en : am; }
-function prizeSetting(pool, lang) { return db.getSetting(`prize_${pool}_${lang === 'en' ? 'en' : 'am'}`) || ''; }
+function prizeSetting(pool, lang) {
+  const language = lang === 'en' ? 'en' : 'am';
+  if (Number(pool) === 100 && language === 'am') return 'በእንጨት የተደጎሰ መጽሐፍ ቅዱስ';
+  return db.getSetting(`prize_${pool}_${language}`) || '';
+}
 
 let botInfo = null;
 let stopping = false;
