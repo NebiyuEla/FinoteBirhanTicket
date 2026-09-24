@@ -189,8 +189,8 @@ async function handleCommand(message, text) {
       db.setUserState(telegramId, 'register_name');
       await bot.sendMessage(telegramId,
         tr(telegramId,
-          '✝️ ወደ ፍኖተ ብርሃን ሰንበት ትምህርት ቤት ዲጂታል ዕጣ እንኳን ደህና መጡ።\n\nእባክዎ ሙሉ ስምዎን ይላኩ።',
-          '✝️ Welcome to FinoteBirhan Sunday School Digital Tickets.\n\nPlease send your full name.'),
+          '✝️ ፍኖተ ብርሃን ዲጂታል ዕጣ\n\nሙሉ ስምዎን ይላኩ።',
+          '✝️ FinoteBirhan Digital Tickets\n\nSend your full name.'),
         { reply_markup: inlineKeyboard([[{ text: 'አማርኛ', callback_data: 'lang:am' }, { text: 'English', callback_data: 'lang:en' }]]) }
       );
       return true;
@@ -336,7 +336,7 @@ async function handleRegistrationMessage(message) {
 async function askForPhone(chatId) {
   const am = langOf(chatId) !== 'en';
   await bot.sendMessage(chatId,
-    am ? 'አሁን ስልክ ቁጥርዎን ይላኩ ወይም ከታች ያለውን ቁልፍ ይጫኑ።' : 'Now send your phone number or use the button below.', {
+    am ? '📱 ስልክ ቁጥርዎን ያጋሩ።' : '📱 Share your phone number.', {
       reply_markup: replyKeyboard([[{ text: am ? '📱 ስልኬን አጋራ' : '📱 Share my phone', request_contact: true }]], { oneTime: true, placeholder: '09XXXXXXXX' })
     }
   );
@@ -367,8 +367,8 @@ async function sendMainMenu(chatId, intro = '') {
 
   await bot.sendMessage(chatId, `${intro ? `${intro}
 
-` : ''}${am ? 'ከታች አንዱን ይምረጡ።' : 'Choose an option below.'}`, {
-    reply_markup: replyKeyboard(rows, { placeholder: am ? 'አንዱን ይምረጡ' : 'Choose an option' })
+` : ''}${am ? '👇 ይምረጡ' : '👇 Choose'}`, {
+    reply_markup: replyKeyboard(rows, { placeholder: am ? 'ይምረጡ' : 'Choose' })
   });
 }
 
@@ -473,8 +473,8 @@ async function beginDirectPaymentAccountSelection(chatId, purchase) {
     return sendPaymentInstructions(chatId, assigned);
   }
   await bot.sendMessage(chatId, tr(chatId,
-    '🏦 ክፍያዎን የሚልኩበትን አካውንት ይምረጡ።',
-    '🏦 Choose the transfer account you want to pay.'), {
+    '🏦 የክፍያ አካውንት ይምረጡ።',
+    '🏦 Choose a payment account.'), {
     reply_markup: inlineKeyboard(accounts.map((account) => [{
       text: `${account.is_default ? '★ ' : ''}${paymentAccountButtonLabel(account)}`,
       callback_data: `payacct:${purchase.id}:${account.id}`
@@ -582,35 +582,21 @@ async function sendPaymentInstructions(chatId, purchase) {
       ? (am ? 'የግብይት ሊንክ/ማጣቀሻ ሲልኩ Verify.et በራሱ ያረጋግጣል።' : 'After you send the transaction reference, the payment will be verified automatically when supported.')
       : (am ? 'ማስረጃ ከላኩ በኋላ አስተዳዳሪ ያረጋግጣል።' : 'After you send proof, an administrator will review the payment.');
   db.setUserState(chatId, 'awaiting_payment', { purchaseId: purchase.id });
-  await bot.sendMessage(chatId, am
-    ? `✅ ቁጥርዎ ${config.reservationMinutes} ደቂቃ ተይዟል።
-
-🎟 ${packageLabel(purchase.package_type)}
-${numbers}
-
-💰 መጠን: ${purchase.amount_etb} ብር
-🏦 ክፍያ: ${provider}
-👤 የአካውንት ስም: ${accountName}
-🔢 አካውንት: ${accountNumber}
-
-በትክክል ${purchase.amount_etb} ብር ያስተላልፉ፣ ከዚያ የግብይት ሊንክ/ማጣቀሻ ወይም የደረሰኝ ምስል ይላኩ።
-
-${reviewText}`
-    : `✅ Your number${purchase.numbers.length > 1 ? 's are' : ' is'} reserved for ${config.reservationMinutes} minutes.
-
-🎟 ${packageLabel(purchase.package_type)}
-${numbers}
-
-💰 Amount: ${purchase.amount_etb} ETB
-🏦 Payment: ${provider}
-👤 Account name: ${accountName}
-🔢 Account: ${accountNumber}
-
-Transfer exactly ${purchase.amount_etb} ETB, then send the transaction reference/link or a receipt image here.
-
-${reviewText}`,
-    { reply_markup: inlineKeyboard([[{ text: am ? '❌ ክፍያውን ሰርዝ እና ቁጥሩን ልቀቅ' : '❌ Cancel payment & release number', callback_data: `cancel_pay:${purchase.id}` }]]) }
-  );
+  const safeProvider = htmlEscape(String(provider));
+  const safeAccountName = htmlEscape(String(accountName));
+  const safeAccountNumber = htmlEscape(String(accountNumber));
+  const safeNumbers = htmlEscape(String(numbers));
+  const safePackage = htmlEscape(String(packageLabel(purchase.package_type)));
+  const paymentText = am
+    ? `💳 <b>ክፍያ</b>\n\n🎟 <b>${safePackage}</b>\n${safeNumbers}\n⏱ ${config.reservationMinutes} ደቂቃ ተይዟል\n\n💰 <b>${purchase.amount_etb} ብር</b>\n🏦 <b>ባንክ:</b> ${safeProvider}\n👤 <b>ስም:</b> ${safeAccountName}\n🔢 <b>አካውንት:</b> <code>${safeAccountNumber}</code>\n\nከከፈሉ በኋላ ደረሰኙን ወይም የግብይት ሊንኩን ይላኩ።`
+    : `💳 <b>Payment</b>\n\n🎟 <b>${safePackage}</b>\n${safeNumbers}\n⏱ Reserved for ${config.reservationMinutes} min\n\n💰 <b>${purchase.amount_etb} ETB</b>\n🏦 <b>Bank:</b> ${safeProvider}\n👤 <b>Name:</b> ${safeAccountName}\n🔢 <b>Account:</b> <code>${safeAccountNumber}</code>\n\nAfter paying, send the receipt screenshot or transaction link/reference here.`;
+  await bot.sendMessage(chatId, paymentText, {
+    parse_mode: 'HTML',
+    reply_markup: inlineKeyboard([
+      [{ text: am ? '📋 አካውንት ቁጥር ቅዳ' : '📋 Copy account number', copy_text: { text: String(accountNumber) } }],
+      [{ text: am ? '❌ ሰርዝ' : '❌ Cancel', callback_data: `cancel_pay:${purchase.id}` }]
+    ])
+  });
 }
 
 async function handleStateMessage(message, state) {
@@ -791,20 +777,13 @@ async function sendIssuedTickets(chatId, purchaseId) {
     const dateLine = drawAt
       ? (am ? `📅 ዕጣ: ${formatDrawDate(drawAt)}` : `Draw: ${formatDrawDate(drawAt)}`)
       : (am ? '📅 የዕጣ ቀን: በቅርቡ' : 'Draw date: To be announced');
+    const safePrize = htmlEscape(String(prize));
+    const safeOwner = htmlEscape(String(ticket.owner_name || ''));
+    const safeDate = htmlEscape(String(dateLine));
     const caption = am
-      ? `🎟 የፍኖተ ብርሃን ዲጂታል ትኬት
-${ticket.pool} ብር · #${formatNumber(ticket.number)}
-🏆 ሽልማት: ${prize}
-👤 ${ticket.owner_name}
-🆔 ${ticket.id}
-${dateLine}`
-      : `🎟 FinoteBirhan Digital Ticket
-${ticket.pool} ETB Draw · #${formatNumber(ticket.number)}
-🏆 Prize: ${prize}
-Name: ${ticket.owner_name}
-Ticket ID: ${ticket.id}
-${dateLine}`;
-    await bot.sendPhoto(chatId, png, `${ticket.id}.png`, caption);
+      ? `🎟 <b>${ticket.pool} ብር · #${formatNumber(ticket.number)}</b>\n🏆 <b>ሽልማት:</b> ${safePrize}\n👤 ${safeOwner}\n${safeDate}`
+      : `🎟 <b>${ticket.pool} ETB · #${formatNumber(ticket.number)}</b>\n🏆 <b>Prize:</b> ${safePrize}\n👤 ${safeOwner}\n${safeDate}`;
+    await bot.sendPhoto(chatId, png, `${ticket.id}.png`, caption, { parse_mode: 'HTML' });
   }
 }
 
