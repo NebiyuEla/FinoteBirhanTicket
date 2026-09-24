@@ -1,0 +1,46 @@
+name: Build DISCloud Upload Package
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-discloud-package.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Verify backend and required wording
+        shell: bash
+        run: |
+          node --check bot/backend/src/index.js
+          node --check bot/backend/src/db.js
+          node --check bot/backend/src/telegram.js
+          grep -F "በእንጨት የተደጎሰ መጽሐፍ ቅዱስ" bot/backend/src/index.js
+
+      - name: Stage DISCloud upload files
+        shell: bash
+        run: |
+          rm -rf discloud-upload
+          mkdir -p discloud-upload/src
+          cp bot/backend/package.json discloud-upload/
+          cp bot/backend/discloud.config discloud-upload/
+          cp bot/backend/.discloudignore discloud-upload/
+          cp bot/backend/src/*.js discloud-upload/src/
+          printf '%s\n' "Source commit: $(git rev-parse HEAD)" > discloud-upload/DEPLOYMENT_COMMIT.txt
+
+      - name: Upload ready-to-use ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FinoteBirhan-DISCloud
+          path: discloud-upload/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
