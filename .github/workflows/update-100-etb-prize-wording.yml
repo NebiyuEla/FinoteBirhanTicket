@@ -1,4 +1,4 @@
-name: Update 100 ETB prize wording
+name: Force 100 ETB Amharic prize wording
 
 on:
   push:
@@ -17,55 +17,37 @@ jobs:
         with:
           ref: main
 
-      - name: Update wording and migrate existing setting
+      - name: Force runtime wording
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          new = 'በእንጨት የተደጎሰ መጽሐፍ ቅዱስ'
-
-          app = Path('app.js')
-          text = app.read_text(encoding='utf-8')
-          old_front = "100: params.get('p100am') || 'በእንጨት የተሰራ መጽሐፍ ቅዱስ',"
-          new_front = f"100: params.get('p100am') || '{new}',"
-          if old_front not in text:
-              raise SystemExit('Expected app.js prize wording was not found')
-          app.write_text(text.replace(old_front, new_front, 1), encoding='utf-8')
-
-          db = Path('bot/backend/src/db.js')
-          text = db.read_text(encoding='utf-8')
-          old_default = "['prize_100_am', 'የእንጨት መጽሐፍ ቅዱስ'],"
-          new_default = f"['prize_100_am', '{new}'],"
-          if old_default not in text:
-              raise SystemExit('Expected db.js prize_100_am default was not found')
-          text = text.replace(old_default, new_default, 1)
-
-          anchor = "this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_100_en' AND value='Wooden Bible'`).run('Handcrafted Wooden Bible', now);"
-          migration = "this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_100_am' AND value IN ('የእንጨት መጽሐፍ ቅዱስ','በእንጨት የተሰራ መጽሐፍ ቅዱስ')`).run('በእንጨት የተደጎሰ መጽሐፍ ቅዱስ', now);"
-          if migration not in text:
-              if anchor not in text:
-                  raise SystemExit('Migration anchor was not found in db.js')
-              text = text.replace(anchor, anchor + '\n    ' + migration, 1)
-          db.write_text(text, encoding='utf-8')
+          path = Path('bot/backend/src/index.js')
+          text = path.read_text(encoding='utf-8')
+          old = "function prizeSetting(pool, lang) { return db.getSetting(`prize_${pool}_${lang === 'en' ? 'en' : 'am'}`) || ''; }"
+          new = """function prizeSetting(pool, lang) {
+  const language = lang === 'en' ? 'en' : 'am';
+  if (Number(pool) === 100 && language === 'am') return 'በእንጨት የተደጎሰ መጽሐፍ ቅዱስ';
+  return db.getSetting(`prize_${pool}_${language}`) || '';
+}"""
+          if old not in text:
+              if new not in text:
+                  raise SystemExit('prizeSetting function was not found in expected form')
+          else:
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
           PY
 
       - name: Syntax check
-        run: |
-          node --check app.js
-          node --check bot/backend/src/db.js
+        run: node --check bot/backend/src/index.js
 
-      - name: Commit and push
+      - name: Commit fix and remove one-shot workflow
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app.js bot/backend/src/db.js
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          git commit -m "fix: update 100 ETB prize wording"
+          git add bot/backend/src/index.js
+          git rm .github/workflows/update-100-etb-prize-wording.yml
+          git commit -m "fix: force 100 ETB Amharic prize wording"
           git push origin HEAD:main
-
-# trigger: 2026-09-24
