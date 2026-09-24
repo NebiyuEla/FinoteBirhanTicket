@@ -1,0 +1,69 @@
+name: Update 100 ETB prize wording
+
+on:
+  push:
+    paths:
+      - '.github/workflows/update-100-etb-prize-wording.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-wording:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update wording and migrate existing setting
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          new = 'በእንጨት የተደጎሰ መጽሐፍ ቅዱስ'
+
+          app = Path('app.js')
+          text = app.read_text(encoding='utf-8')
+          old_front = "100: params.get('p100am') || 'በእንጨት የተሰራ መጽሐፍ ቅዱስ',"
+          new_front = f"100: params.get('p100am') || '{new}',"
+          if old_front not in text:
+              raise SystemExit('Expected app.js prize wording was not found')
+          app.write_text(text.replace(old_front, new_front, 1), encoding='utf-8')
+
+          db = Path('bot/backend/src/db.js')
+          text = db.read_text(encoding='utf-8')
+          old_default = "['prize_100_am', 'የእንጨት መጽሐፍ ቅዱስ'],"
+          new_default = f"['prize_100_am', '{new}'],"
+          if old_default not in text:
+              raise SystemExit('Expected db.js prize_100_am default was not found')
+          text = text.replace(old_default, new_default, 1)
+
+          anchor = "this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_100_en' AND value='Wooden Bible'`).run('Handcrafted Wooden Bible', now);"
+          migration = "this.db.prepare(`UPDATE settings SET value=?,updated_at=? WHERE key='prize_100_am' AND value IN ('የእንጨት መጽሐፍ ቅዱስ','በእንጨት የተሰራ መጽሐፍ ቅዱስ')`).run('በእንጨት የተደጎሰ መጽሐፍ ቅዱስ', now);"
+          if migration not in text:
+              if anchor not in text:
+                  raise SystemExit('Migration anchor was not found in db.js')
+              text = text.replace(anchor, anchor + '\n    ' + migration, 1)
+          db.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Syntax check
+        run: |
+          node --check app.js
+          node --check bot/backend/src/db.js
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js bot/backend/src/db.js
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "fix: update 100 ETB prize wording"
+          git push origin HEAD:main
