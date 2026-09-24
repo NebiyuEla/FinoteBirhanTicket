@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="stylesheet" href="./assets/font-fix.css?v=20260924-1205" />
+  <link rel="stylesheet" href="./assets/font-fix.css?v=20260924-1218" />
   <style>
     .number-screen.visible{min-height:0!important}
     .selection-shell{display:flex!important;flex-direction:column!important;min-height:0!important;overflow:hidden!important}
@@ -69,7 +69,7 @@
           </button>
 
           <button class="ticket-card prize-card clickable-glow" type="button" data-ticket="200">
-            <div class="prize-media contain-media"><img id="ticket200Image" src="./assets/ticket-200.webp?v=fix-20260924-1205" alt="የቅድስት ማርያም ምስለ ሰዕል" /></div>
+            <div class="prize-media contain-media"><img id="ticket200Image" src="./logo.svg" alt="የቅድስት ማርያም ምስለ ሰዕል" /></div>
             <div class="prize-copy"><span class="price-label">200 <span data-i18n="birr">ብር</span></span><strong class="prize-name" id="prize200">የቅድስት ማርያም ምስለ ሰዕል</strong><span class="tap-label" data-i18n="tapToChoose">ቁጥር ለመምረጥ ይጫኑ</span></div>
           </button>
 
@@ -101,9 +101,22 @@
 
     <section class="screen" data-screen="error"><div class="state-card"><img src="./logo.svg" alt="" /><h2 data-i18n="expiredTitle">ሊንኩ አልፎታል</h2><p data-i18n="expiredText">ወደ ቦቱ ይመለሱ እና “ትኬት ይግዙ” በመጫን እንደገና ይክፈቱ።</p></div></section>
   </main>
-  <script src="./app.js"></script>
+  <script src="./app.js?v=20260924-1218"></script>
   <script>
     (function () {
+      async function load200TicketImage() {
+        var image = document.getElementById('ticket200Image');
+        if (!image) return;
+        try {
+          var response = await fetch('./assets/ticket-200-v2.txt?v=20260924-1218', { cache: 'force-cache' });
+          if (!response.ok) throw new Error('ticket-200-v2');
+          var chunk = (await response.text()).trim();
+          if (!chunk) throw new Error('empty ticket-200-v2');
+          image.src = 'data:image/webp;base64,' + chunk;
+        } catch (error) {
+          image.src = './logo.svg';
+        }
+      }
       function applyCopyFixes() {
         var lang = (localStorage.getItem('finote_lang') || document.documentElement.lang || 'am').toLowerCase().startsWith('en') ? 'en' : 'am';
         var p200 = document.getElementById('prize200');
@@ -115,6 +128,7 @@
         if (p50) p50.textContent = lang === 'en' ? 'Netela, 4:3 epoxy St Mary icon & Zemare Heran key holder' : 'ነጠላ፣ በኢፖክሲ የተሰራ 4:3 የቅድስት ማርያም ምስለ ሰዕል እና የዝማሬ ኄራን ቁልፍ መያዣ';
         if (confirm && confirm.textContent !== 'በመላክ ላይ…' && confirm.textContent !== 'Sending…') confirm.textContent = lang === 'en' ? 'Reserve & Pay' : 'ይያዙ እና ይክፈሉ';
       }
+      load200TicketImage();
       applyCopyFixes();
       document.addEventListener('click', function (event) {
         if (event.target.closest('[data-lang-control],#langToggle,[data-number],[data-ticket]')) setTimeout(applyCopyFixes, 0);
