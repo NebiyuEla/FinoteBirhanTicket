@@ -108,7 +108,7 @@
         var image = document.getElementById('ticket200Image');
         if (!image) return;
         try {
-          var response = await fetch('./assets/ticket-200-v2.txt?v=20260924-1218', { cache: 'force-cache' });
+          var response = await fetch('./assets/ticket-200-v2.txt?v=20260924-1325', { cache: 'no-store' });
           if (!response.ok) throw new Error('ticket-200-v2');
           var chunk = (await response.text()).trim();
           if (!chunk) throw new Error('empty ticket-200-v2');
