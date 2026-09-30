@@ -27,8 +27,9 @@ function close(db, dir) {
 }
 
 function expire(db, purchaseId) {
-  db.db.prepare("UPDATE purchases SET reserved_until='2000-01-01T00:00:00.000Z' WHERE id=?").run(purchaseId);
-  db.db.prepare("UPDATE ticket_numbers SET reserved_until='2000-01-01T00:00:00.000Z' WHERE purchase_id=?").run(purchaseId);
+  const justExpired = new Date(Date.now() - 60_000).toISOString();
+  db.db.prepare('UPDATE purchases SET reserved_until=? WHERE id=?').run(justExpired, purchaseId);
+  db.db.prepare('UPDATE ticket_numbers SET reserved_until=? WHERE purchase_id=?').run(justExpired, purchaseId);
   db.releaseExpiredReservations();
 }
 
