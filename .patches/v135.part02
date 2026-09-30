@@ -1,0 +1,114 @@
++        `💳 Payment confirmation needed\n\nBuyer: ${purchase.buyer_name}\nPhone: ${purchase.buyer_phone}\nTicket: ${purchase.package_type === 'bundle' ? 'Bundle — one number in each of the 3 draws' : `${purchase.package_type} ETB Ticket`}\nNumbers: ${numbers || '-'}\nAmount: ${purchase.amount_etb} ETB${purchase.payment_reference ? `\nReference: ${purchase.payment_reference}` : ''}\n\nConfirm only after you see the money in the account.`,
++        { reply_markup: inlineKeyboard([[
++          { text: '✅ Payment received', callback_data: `seller_ok:${purchase.id}` },
++          { text: '❌ Not received', callback_data: `seller_no:${purchase.id}` }
++        ]]) }
++      );
++    }
++    return;
++  }
++
++  db.clearUserState(telegramId);
+   db.setUserState(telegramId, 'seller_account_provider', {});
+   await bot.sendMessage(telegramId,
+     `💳 Seller payment account
+@@ -850,6 +923,11 @@
+     return;
+   }
+   const text = String(message.text || '').trim();
++  if (isMainMenuNavigation(text)) {
++    db.clearUserState(telegramId);
++    await handleMainMenuNavigation(telegramId, text);
++    return;
++  }
+   const data = state.data || {};
+   if (state.state === 'seller_account_provider') {
+     if (text.length < 2 || text.length > 30) return bot.sendMessage(telegramId, 'Send a valid provider name, for example CBE or Telebirr.');
+@@ -1068,6 +1146,7 @@
+       return;
+     }
+     if (data === 'admin_payments') return showPendingPayments(telegramId);
++    if (data.startsWith('admin_recovery_inspect:')) return showRecoveryInspection(telegramId, data.split(':').slice(1).join(':'));
+     if (data === 'admin_pools') return showPoolStatus(telegramId);
+     if (data === 'admin_draw') return showDrawControls(telegramId);
+     if (data === 'admin_export') return adminExport(telegramId);
+@@ -1108,20 +1187,37 @@
+     if (data.startsWith('admin_pay_ok:') || data.startsWith('admin_pay_no:')) {
+       const purchaseId = data.split(':')[1];
+       const purchase = db.getPurchase(purchaseId);
+-      if (!purchase) return;
++      if (!purchase) return bot.sendMessage(telegramId, 'Recovery item no longer exists. Refresh Recovery.');
+       if (data.startsWith('admin_pay_ok:')) {
+         try {
+-          db.confirmPurchase(purchaseId, telegramId, { note: 'Approved manually by admin.' });
+-          await bot.sendMessage(telegramId, '✅ Payment approved and ticket issued.');
+-          await safeSend(purchase.buyer_telegram_id, '✅ Your payment was approved. Your digital ticket is ready.');
+-          await sendIssuedTickets(purchase.buyer_telegram_id, purchaseId);
++          const paid = purchase.status === 'expired'
++            ? db.recoverExpiredPurchase(purchaseId, telegramId, { note: 'Recovered and approved manually by admin after outage.' })
++            : db.confirmPurchase(purchaseId, telegramId, { note: 'Approved manually by admin.' });
++          await bot.sendMessage(telegramId, purchase.status === 'expired' ? '✅ Expired payment recovered and ticket issued.' : '✅ Payment approved and ticket issued.');
++          const buyerChat = paid.linked_telegram_id || (paid.source === 'direct' ? paid.buyer_telegram_id : null);
++          if (buyerChat) {
++            await safeSend(buyerChat, '✅ Your payment was approved. Your digital ticket is ready.');
++            await sendIssuedTickets(buyerChat, purchaseId);
++          }
++          if (paid.source === 'seller' && paid.seller?.telegram_id && paid.seller.telegram_id !== buyerChat) {
++            await safeSend(paid.seller.telegram_id, `✅ Admin approved the pending sale for ${paid.buyer_name}.`);
++            await sendIssuedTickets(paid.seller.telegram_id, purchaseId);
++          }
+         } catch (error) {
+           await bot.sendMessage(telegramId, `⚠️ ${error.message}`);
+         }
+       } else {
+-        db.rejectPurchase(purchaseId, telegramId, 'Rejected by administrator.');
+-        await bot.sendMessage(telegramId, 'Payment rejected and the number released.');
+-        await safeSend(purchase.buyer_telegram_id, '❌ Your payment could not be confirmed. The reserved number has been released.');
++        try {
++          db.resolveRecoveryPurchaseAsUnpaid(purchaseId, telegramId, 'Rejected/resolved as unpaid by administrator.');
++          await bot.sendMessage(telegramId, '❌ Recovery item resolved as unpaid and any reservation released.');
++          const buyerChat = purchase.linked_telegram_id || (purchase.source === 'direct' ? purchase.buyer_telegram_id : null);
++          if (buyerChat) await safeSend(buyerChat, '❌ Your payment could not be confirmed. The reserved number has been released.');
++          if (purchase.source === 'seller' && purchase.seller?.telegram_id) {
++            await safeSend(purchase.seller.telegram_id, `❌ Admin resolved the pending sale for ${purchase.buyer_name} as unpaid.`);
++          }
++        } catch (error) {
++          await bot.sendMessage(telegramId, `⚠️ ${error.message}`);
++        }
+       }
+       return;
+     }
+@@ -1132,34 +1228,41 @@
+   const am = langOf(telegramId) !== 'en';
+   if (!db.isAdmin(telegramId)) return bot.sendMessage(telegramId, am ? 'የአስተዳዳሪ ፈቃድ ያስፈልጋል።' : 'Admin access required.');
+   const s = db.dashboardStats();
++  const recovery = db.recoveryStats();
+   const poolLines = s.pools.map((p) => am ? `${p.pool} ብር: ${p.sold}/200 ተሽጧል · ${p.reserved} ተይዟል` : `${p.pool} ETB: ${p.sold}/200 sold · ${p.reserved} reserved`).join('\n');
+   await bot.sendMessage(telegramId, am
+     ? `🛠 ፍኖተ ብርሃን አስተዳዳሪ
++Build: v${BOT_BUILD}
+ 
+ 💰 ገቢ: ${s.revenue} ብር
+ ✅ የተከፈሉ ግዢዎች: ${s.paidCount}
+ 👥 ተጠቃሚዎች: ${s.users}
+-⏳ ማረጋገጫ የሚጠብቁ: ${s.pending}
++🚨 ሪከቨሪ የሚፈልጉ: ${recovery.attention}
+ 🧾 ትኬት ሻጮች: ${s.sellers}
+ 
+ ቀጥታ ሽያጭ: ${s.directRevenue} ብር (${s.directCount})
+ በሻጭ የተመዘገበ: ${s.sellerRevenue} ብር (${s.sellerCount})
+ 
+-${poolLines}`
++${poolLines}
++
++🚨 ሪከቨሪው ያልተጠናቀቁ ግዢዎችን እና ባለፉት 7 ቀናት ጊዜያቸው ያለፈባቸውን ሪዘርቬሽኖች ያሳያል።`
+     : `🛠 FinoteBirhan Admin
++Build: v${BOT_BUILD}
+ 
+ Revenue: ${s.revenue} ETB
+ Paid purchases: ${s.paidCount}
+ Customers: ${s.users}
+-Pending review: ${s.pending}
++Recovery attention: ${recovery.attention}
+ Ticket sellers: ${s.sellers}
+ 
