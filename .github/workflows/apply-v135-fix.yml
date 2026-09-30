@@ -1,0 +1,61 @@
+name: Apply FinoteBirhan v1.3.5 Fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/apply-v135-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Apply staged patch
+        run: |
+          cat .patches/v135.part* > /tmp/v135.patch
+          git apply --check /tmp/v135.patch
+          git apply /tmp/v135.patch
+
+      - name: Install dependencies
+        working-directory: bot/backend
+        run: npm install --no-audit --no-fund --package-lock=false
+
+      - name: Syntax checks
+        working-directory: bot/backend
+        run: |
+          node --check src/start.js
+          node --check src/runtimeGuards.js
+          node --check src/index.js
+          node --check src/db.js
+          node --check src/telegram.js
+          node --check src/verifyEt.js
+          node --check src/ticketImage.js
+          node --check src/utils.js
+
+      - name: Full regression suite
+        working-directory: bot/backend
+        run: npm test
+
+      - name: Commit verified fix and remove staging files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .patches/v135.part* .github/workflows/apply-v135-fix.yml
+          git add bot/backend/package.json bot/backend/src/index.js bot/backend/src/db.js bot/backend/src/runtimeGuards.js bot/backend/src/start.js bot/backend/tests/navigationRecoveryCore.test.js
+          git commit -m "fix: harden navigation and add core outage recovery"
+          git push origin HEAD:main
