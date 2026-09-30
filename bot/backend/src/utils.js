@@ -98,5 +98,9 @@ export function csvEscape(value) {
 }
 
 export function normalizeNameForCompare(value) {
-  return String(value || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim();
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 }
