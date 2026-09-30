@@ -56,6 +56,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .patches/v135.part* .github/workflows/apply-v135-fix.yml
-          git add bot/backend/package.json bot/backend/src/index.js bot/backend/src/db.js bot/backend/src/runtimeGuards.js bot/backend/src/start.js bot/backend/tests/navigationRecoveryCore.test.js
+          git add bot/backend/package.json bot/backend/src/index.js bot/backend/src/db.js bot/backend/src/runtimeGuards.js bot/backend/src/start.js bot/backend/tests/navigationRecoveryCore.test.js bot/backend/tests/sellerAccountRouting.test.js
           git commit -m "fix: harden navigation and add core outage recovery"
           git push origin HEAD:main
