@@ -459,6 +459,36 @@ export class TicketDatabase {
     return Boolean(seller?.payment_provider && seller?.account_name && seller?.account_number);
   }
 
+  repairCorruptedSellerAccounts() {
+    const normalize = (value) => String(value || '')
+      .replace(/[\uFE0E\uFE0F]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const navigationLabels = new Set([
+      '🎫 የእኔ ትኬቶች', '🎫 My Tickets',
+      '🏆 ውጤት', '🏆 Results',
+      '📈 የሽያጭ ሪፖርት', '📈 Seller Stats',
+      '💳 የሻጭ አካውንት', '💳 Seller Account',
+      '🌐 ቋንቋ', '🌐 Language',
+      '🛠 አስተዳዳሪ', '🛠 Admin',
+      '🎟 ትኬት ይግዙ', '🎟 Buy Ticket'
+    ].map(normalize));
+    const rows = this.db.prepare(`SELECT id,payment_provider,account_name,account_number FROM sellers
+      WHERE COALESCE(payment_provider,'')<>'' OR COALESCE(account_name,'')<>'' OR COALESCE(account_number,'')<>''`).all();
+    let repaired = 0;
+    for (const row of rows) {
+      const values = [row.payment_provider, row.account_name, row.account_number].map(normalize);
+      // Only clear accounts where every stored field is obviously a navigation
+      // button label. This targets the historical wizard bug without touching
+      // any legitimate seller account data.
+      if (!values.every((value) => navigationLabels.has(value))) continue;
+      this.db.prepare(`UPDATE sellers SET payment_provider='',account_name='',account_number='' WHERE id=?`).run(row.id);
+      this.log(null, 'seller.account_auto_repaired', 'seller', String(row.id), { reason: 'menu_labels_saved_as_account_fields' });
+      repaired += 1;
+    }
+    return repaired;
+  }
+
   ensureLegacyPaymentAccount(adminId = null) {
     const existing = this.db.prepare('SELECT COUNT(*) AS c FROM payment_accounts').get().c;
     if (existing > 0) return this.getDefaultPaymentAccount();
@@ -955,6 +985,114 @@ export class TicketDatabase {
 
   pendingReviews(limit = 20) {
     return this.db.prepare(`SELECT * FROM purchases WHERE status='manual_review' ORDER BY submitted_at ASC LIMIT ?`).all(limit).map((p) => this.getPurchase(p.id));
+  }
+
+  recoveryQueue(limit = 30, expiredHours = 24 * 7) {
+    this.releaseExpiredReservations();
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 30));
+    const cutoff = new Date(Date.now() - Math.max(1, Number(expiredHours) || 24 * 7) * 60 * 60 * 1000).toISOString();
+    const openStates = ['reserved', 'awaiting_proof', 'verification_pending', 'seller_review', 'manual_review'];
+    const placeholders = openStates.map(() => '?').join(',');
+    const rank = { manual_review: 0, verification_pending: 1, seller_review: 2, awaiting_proof: 3, reserved: 4, expired: 5 };
+    const rows = this.db.prepare(`SELECT id,status,created_at,submitted_at,reserved_until FROM purchases
+      WHERE status IN (${placeholders}) OR (status='expired' AND reserved_until>=?)
+      ORDER BY COALESCE(submitted_at,created_at) ASC`).all(...openStates, cutoff);
+    return rows
+      .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || String(a.submitted_at || a.created_at).localeCompare(String(b.submitted_at || b.created_at)))
+      .slice(0, safeLimit)
+      .map((row) => this.getPurchase(row.id));
+  }
+
+  recoveryStats(expiredHours = 24 * 7) {
+    const queue = this.recoveryQueue(100, expiredHours);
+    const counts = {};
+    for (const purchase of queue) counts[purchase.status] = (counts[purchase.status] || 0) + 1;
+    return {
+      attention: queue.length,
+      recentExpired: counts.expired || 0,
+      counts
+    };
+  }
+
+  assessRecoveryPurchase(purchaseId) {
+    const purchase = this.getPurchase(purchaseId);
+    if (!purchase) return null;
+    const numberStates = (purchase.numbers || []).map((num) => this.db.prepare(
+      'SELECT pool,number,status,purchase_id,reserved_until FROM ticket_numbers WHERE pool=? AND number=?'
+    ).get(num.pool, num.number) || { pool: num.pool, number: num.number, status: 'missing', purchase_id: null, reserved_until: null });
+    const intact = numberStates.length === (purchase.numbers || []).length
+      && numberStates.every((row) => row.status === 'reserved' && row.purchase_id === purchase.id);
+    const availableForRestore = numberStates.length === (purchase.numbers || []).length
+      && numberStates.every((row) => row.status === 'available' && !row.purchase_id);
+    const conflicts = numberStates
+      .filter((row) => row.status !== 'available' || row.purchase_id)
+      .map((row) => `${row.pool} ETB #${String(row.number).padStart(3, '0')} → ${row.status}${row.purchase_id ? ` (${row.purchase_id})` : ''}`);
+    const hasEvidence = Boolean(purchase.payment_reference || purchase.payment_file_id || purchase.source === 'seller');
+    return { purchase, numberStates, intact, availableForRestore, conflicts, hasEvidence };
+  }
+
+  recoverExpiredPurchase(purchaseId, reviewerId, { note = 'Recovered and approved by administrator.' } = {}) {
+    if (!this.isAdmin(reviewerId)) throw new Error('Admin access required for expired-payment recovery.');
+    this.releaseExpiredReservations();
+    const purchase = this.getPurchase(purchaseId);
+    if (!purchase) throw new Error('Purchase not found.');
+    if (purchase.status !== 'expired') throw new Error(`Purchase is ${purchase.status}, not expired.`);
+    if (purchase.source === 'direct' && !purchase.payment_reference && !purchase.payment_file_id) {
+      throw new Error('Expired direct purchase has no stored payment evidence. Ask the buyer for a transaction reference before approval.');
+    }
+    const assessment = this.assessRecoveryPurchase(purchaseId);
+    if (!assessment?.availableForRestore) {
+      throw new Error(`Cannot recover: original ticket number${purchase.numbers.length === 1 ? '' : 's'} ${purchase.numbers.length === 1 ? 'is' : 'are'} no longer available.${assessment?.conflicts?.length ? ` ${assessment.conflicts.join('; ')}` : ''}`);
+    }
+
+    const restoredUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const fresh = this.db.prepare('SELECT status FROM purchases WHERE id=?').get(purchaseId);
+      if (!fresh || fresh.status !== 'expired') throw new Error('Purchase status changed. Refresh Recovery and try again.');
+      for (const num of purchase.numbers) {
+        const row = this.db.prepare('SELECT status,purchase_id FROM ticket_numbers WHERE pool=? AND number=?').get(num.pool, num.number);
+        if (!row || row.status !== 'available' || row.purchase_id) {
+          throw new Error(`${num.pool} ETB #${String(num.number).padStart(3, '0')} is no longer available.`);
+        }
+        this.db.prepare(`UPDATE ticket_numbers SET status='reserved',purchase_id=?,reserved_until=?,buyer_telegram_id=?,seller_id=? WHERE pool=? AND number=?`)
+          .run(purchase.id, restoredUntil, purchase.linked_telegram_id ?? purchase.buyer_telegram_id, purchase.seller_id ?? null, num.pool, num.number);
+      }
+      this.db.prepare(`UPDATE purchases SET status='manual_review',reserved_until=?,reviewed_by=?,note=TRIM(COALESCE(note,'') || ' [recovery lock restored]') WHERE id=?`)
+        .run(restoredUntil, reviewerId, purchaseId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+
+    try {
+      const paid = this.confirmPurchase(purchaseId, reviewerId, { note });
+      this.log(reviewerId, 'purchase.recovered_after_expiry', 'purchase', purchaseId, { originalStatus: 'expired' });
+      return paid;
+    } catch (error) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.db.prepare(`UPDATE ticket_numbers SET status='available',purchase_id=NULL,reserved_until=NULL,buyer_telegram_id=NULL,seller_id=NULL WHERE purchase_id=? AND status='reserved'`).run(purchaseId);
+        this.db.prepare(`UPDATE purchases SET status='expired',reserved_until=?,note=TRIM(COALESCE(note,'') || ' [recovery confirmation failed]') WHERE id=?`).run(nowIso(), purchaseId);
+        this.db.exec('COMMIT');
+      } catch {
+        try { this.db.exec('ROLLBACK'); } catch {}
+      }
+      throw error;
+    }
+  }
+
+  resolveRecoveryPurchaseAsUnpaid(purchaseId, reviewerId, note = 'Resolved as unpaid by administrator.') {
+    if (!this.isAdmin(reviewerId)) throw new Error('Admin access required.');
+    this.releaseExpiredReservations();
+    const purchase = this.getPurchase(purchaseId);
+    if (!purchase) throw new Error('Purchase not found.');
+    if (purchase.status !== 'expired') return this.rejectPurchase(purchaseId, reviewerId, note);
+    this.db.prepare(`UPDATE purchases SET status='rejected',reviewed_by=?,note=?,reserved_until=? WHERE id=?`)
+      .run(reviewerId, note, nowIso(), purchaseId);
+    this.log(reviewerId, 'purchase.recovery_rejected', 'purchase', purchaseId, { previousStatus: 'expired' });
+    return this.getPurchase(purchaseId);
   }
 
   sellerPendingReviews(sellerId, limit = 20) {

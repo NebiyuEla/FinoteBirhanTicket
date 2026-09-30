@@ -1,6 +1,6 @@
 {
   "name": "finotebirhan-ticket-bot",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "private": true,
   "description": "FinoteBirhan Sunday School digital ticket Telegram bot + Mini App",
   "type": "module",

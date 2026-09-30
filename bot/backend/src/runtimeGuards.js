@@ -13,16 +13,6 @@ const TERMINAL_CALLBACK_PREFIXES = [
   'cancel_pay:'
 ];
 
-const MAIN_MENU_ACTIONS = new Set([
-  '🎫 የእኔ ትኬቶች', '🎫 My Tickets',
-  '🏆 ውጤት', '🏆 Results',
-  '📈 የሽያጭ ሪፖርት', '📈 Seller Stats',
-  '💳 የሻጭ አካውንት', '💳 Seller Account',
-  '🌐 ቋንቋ', '🌐 Language',
-  '🛠 አስተዳዳሪ', '🛠 Admin',
-  '🎟 ትኬት ይግዙ', '🎟 Buy Ticket'
-]);
-const pendingMenuActions = new Set();
 const pendingSellerReviewInbox = new Map();
 const recoverySummaryChats = new Set();
 let activeDb = null;
@@ -89,14 +79,6 @@ const originalGetUserState = TicketDatabase.prototype.getUserState;
 TicketDatabase.prototype.getUserState = function getUserStateWithPaymentGuard(telegramId) {
   activeDb = this;
   const state = originalGetUserState.call(this, telegramId);
-
-  // Reply-keyboard buttons are navigation. If the user taps one while a wizard
-  // or payment state is active, let index.js handle the button normally instead
-  // of consuming its label as payment proof/account data.
-  if (pendingMenuActions.delete(Number(telegramId))) {
-    if (state) this.clearUserState(telegramId);
-    return null;
-  }
 
   if (state?.state !== 'awaiting_payment') return state;
 
@@ -403,7 +385,8 @@ TelegramBotApi.prototype.sendMessage = async function sendMessageWithRuntimeUx(c
   let nextText = String(text || '');
   let nextExtra = cloneMarkup(extra);
 
-  if (nextText.includes('🛠 FinoteBirhan Admin') || nextText.includes('🛠 ፍኖተ ብርሃን አስተዳዳሪ')) {
+  const coreRecoveryDashboard = nextText.includes('Recovery attention:') || nextText.includes('🚨 ሪከቨሪ የሚፈልጉ:');
+  if (!coreRecoveryDashboard && (nextText.includes('🛠 FinoteBirhan Admin') || nextText.includes('🛠 ፍኖተ ብርሃን አስተዳዳሪ'))) {
     const recovery = activeDb?.recoveryStats?.() || { attention: 0, recentExpired: 0 };
     nextText = nextText
       .replace(/Pending review:\s*\d+/, `Recovery attention: ${recovery.attention}`)
@@ -421,7 +404,8 @@ TelegramBotApi.prototype.sendMessage = async function sendMessageWithRuntimeUx(c
   }
 
   const recoveryId = recoveryPurchaseIdFromMarkup(nextExtra);
-  const isRecoveryCard = Boolean(recoveryId && nextText.includes('\nStatus: '));
+  const coreRecoveryCard = nextText.startsWith('🚨 ') && nextText.includes('\nStatus: ');
+  const isRecoveryCard = Boolean(recoveryId && nextText.includes('\nStatus: ') && !coreRecoveryCard);
   if (isRecoveryCard) {
     if (!recoverySummaryChats.has(Number(chatId))) {
       recoverySummaryChats.add(Number(chatId));
@@ -448,11 +432,6 @@ const originalGetUpdates = TelegramBotApi.prototype.getUpdates;
 TelegramBotApi.prototype.getUpdates = async function getUpdatesWithActionCardCleanup(payload) {
   const updates = await originalGetUpdates.call(this, payload);
   await Promise.all(updates.map(async (update) => {
-    const message = update?.message;
-    const messageText = String(message?.text || '').trim();
-    const telegramId = message?.from?.id;
-    if (telegramId && MAIN_MENU_ACTIONS.has(messageText)) pendingMenuActions.add(Number(telegramId));
-
     const query = update?.callback_query;
     const data = String(query?.data || '');
     if (data.startsWith('admin_recovery_inspect:')) {

@@ -10,6 +10,8 @@ import {
 
 assertRuntimeConfig();
 
+const BOT_BUILD = '1.3.5';
+
 const db = new TicketDatabase(config.dbPath, {
   reservationMinutes: config.reservationMinutes,
   manualReviewMinutes: config.manualReviewMinutes
@@ -127,6 +129,54 @@ function bootstrapRuntimeSettings() {
       }, config.adminTelegramId);
     }
   }
+
+  const repairedSellerAccounts = db.repairCorruptedSellerAccounts?.() || 0;
+  if (repairedSellerAccounts) console.warn(`[repair] cleared ${repairedSellerAccounts} seller payment account(s) corrupted by menu-label input`);
+}
+
+function normalizeNavigationLabel(value) {
+  return String(value || '')
+    .replace(/[\uFE0E\uFE0F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const MAIN_MENU_NAVIGATION = new Map([
+  ['🎫 የእኔ ትኬቶች', 'tickets'], ['🎫 My Tickets', 'tickets'],
+  ['🏆 ውጤት', 'results'], ['🏆 Results', 'results'],
+  ['📈 የሽያጭ ሪፖርት', 'seller_stats'], ['📈 Seller Stats', 'seller_stats'],
+  ['💳 የሻጭ አካውንት', 'seller_account'], ['💳 Seller Account', 'seller_account'],
+  ['🌐 ቋንቋ', 'language'], ['🌐 Language', 'language'],
+  ['🛠 አስተዳዳሪ', 'admin'], ['🛠 Admin', 'admin'],
+  ['🎟 ትኬት ይግዙ', 'buy'], ['🎟 Buy Ticket', 'buy']
+].map(([label, action]) => [normalizeNavigationLabel(label), action]));
+
+function isMainMenuNavigation(text) {
+  return MAIN_MENU_NAVIGATION.has(normalizeNavigationLabel(text));
+}
+
+async function handleMainMenuNavigation(telegramId, text) {
+  const action = MAIN_MENU_NAVIGATION.get(normalizeNavigationLabel(text));
+  if (!action) return false;
+
+  // Navigation always wins over a half-finished wizard/payment input state.
+  // Never save button labels such as "Seller Stats" as account/provider data.
+  db.clearUserState(telegramId);
+
+  if (action === 'tickets') await showMyTickets(telegramId);
+  else if (action === 'results') await showResults(telegramId);
+  else if (action === 'seller_stats') await showSellerPanel(telegramId);
+  else if (action === 'seller_account') await startSellerAccountSetup(telegramId);
+  else if (action === 'language') await showLanguagePicker(telegramId);
+  else if (action === 'admin') await showAdminDashboard(telegramId);
+  else if (action === 'buy') {
+    if (!config.miniAppUrl) {
+      await bot.sendMessage(telegramId, tr(telegramId, 'የMini App ሊንክ አልተዘጋጀም።', 'The Mini App URL is not configured yet.'));
+    } else {
+      await sendMainMenu(telegramId);
+    }
+  }
+  return true;
 }
 
 async function handleUpdate(update) {
@@ -151,6 +201,11 @@ async function handleUpdate(update) {
     return handleRegistrationMessage(message);
   }
 
+  // Reply-keyboard navigation must be handled before any persisted wizard state.
+  // This is the hard boundary that prevents menu labels from becoming payment
+  // references, account names, account numbers, etc.
+  if (await handleMainMenuNavigation(telegramId, text)) return;
+
   const state = db.getUserState(telegramId);
   if (state) {
     const handled = await handleStateMessage(message, state);
@@ -162,19 +217,7 @@ async function handleUpdate(update) {
     if (purchase) return handlePaymentProof(message, purchase);
   }
 
-  switch (text) {
-    case '🎫 የእኔ ትኬቶች': case '🎫 My Tickets': return showMyTickets(telegramId);
-    case '🏆 ውጤት': case '🏆 Results': return showResults(telegramId);
-    case '📈 የሽያጭ ሪፖርት': case '📈 Seller Stats': return showSellerPanel(telegramId);
-    case '💳 የሻጭ አካውንት': case '💳 Seller Account': return startSellerAccountSetup(telegramId);
-    case '🌐 ቋንቋ': case '🌐 Language': return showLanguagePicker(telegramId);
-    case '🛠 አስተዳዳሪ': case '🛠 Admin': return showAdminDashboard(telegramId);
-    case '🎟 ትኬት ይግዙ': case '🎟 Buy Ticket':
-      if (!config.miniAppUrl) return bot.sendMessage(telegramId, tr(telegramId, 'የMini App ሊንክ አልተዘጋጀም።', 'The Mini App URL is not configured yet.'));
-      return sendMainMenu(telegramId);
-    default:
-      return sendMainMenu(telegramId);
-  }
+  return sendMainMenu(telegramId);
 }
 
 async function handleCommand(message, text) {
@@ -182,6 +225,11 @@ async function handleCommand(message, text) {
   const [rawCmd, ...parts] = text.split(/\s+/);
   const cmd = rawCmd.split('@')[0].toLowerCase();
   const args = parts.join(' ').trim();
+
+  if (cmd === '/version') {
+    await bot.sendMessage(telegramId, `FinoteBirhan Ticket Bot v${BOT_BUILD}`);
+    return true;
+  }
 
   if (cmd === '/start') {
     const user = db.getUser(telegramId);
@@ -200,6 +248,10 @@ async function handleCommand(message, text) {
       await askForPhone(telegramId);
       return true;
     }
+    // /start is a clean navigation reset. Keep purchases/reservations intact,
+    // but discard stale wizard input so an old Seller Account/payment state
+    // cannot swallow the next menu press after a restart/outage.
+    db.clearUserState(telegramId);
     const activatedSeller = db.activateSellerIfInvited(telegramId);
     const linkedPurchases = db.linkSellerTicketsForUser(telegramId);
     if (linkedPurchases.length) {
@@ -830,6 +882,27 @@ ${lines.join('\n\n')}`);
 async function startSellerAccountSetup(telegramId) {
   const seller = db.getSellerByTelegram(telegramId);
   if (!seller || seller.status !== 'approved') return bot.sendMessage(telegramId, 'Ticket Seller access is not active.');
+
+  // Seller Account doubles as the seller's pending-payment inbox. Never start
+  // editing account details while a sale is waiting for the seller's decision.
+  const pending = db.sellerPendingReviews(seller.id, 30);
+  if (pending.length) {
+    db.clearUserState(telegramId);
+    await bot.sendMessage(telegramId, `💳 ${pending.length} payment/sale confirmation${pending.length === 1 ? '' : 's'} waiting. Approve or cancel each one below.`);
+    for (const purchase of pending) {
+      const numbers = (purchase.numbers || []).map((n) => `${n.pool}: #${formatNumber(n.number)}`).join(' · ');
+      await bot.sendMessage(telegramId,
+        `💳 Payment confirmation needed\n\nBuyer: ${purchase.buyer_name}\nPhone: ${purchase.buyer_phone}\nTicket: ${purchase.package_type === 'bundle' ? 'Bundle — one number in each of the 3 draws' : `${purchase.package_type} ETB Ticket`}\nNumbers: ${numbers || '-'}\nAmount: ${purchase.amount_etb} ETB${purchase.payment_reference ? `\nReference: ${purchase.payment_reference}` : ''}\n\nConfirm only after you see the money in the account.`,
+        { reply_markup: inlineKeyboard([[
+          { text: '✅ Payment received', callback_data: `seller_ok:${purchase.id}` },
+          { text: '❌ Not received', callback_data: `seller_no:${purchase.id}` }
+        ]]) }
+      );
+    }
+    return;
+  }
+
+  db.clearUserState(telegramId);
   db.setUserState(telegramId, 'seller_account_provider', {});
   await bot.sendMessage(telegramId,
     `💳 Seller payment account
@@ -850,6 +923,11 @@ async function handleSellerAccountState(message, state) {
     return;
   }
   const text = String(message.text || '').trim();
+  if (isMainMenuNavigation(text)) {
+    db.clearUserState(telegramId);
+    await handleMainMenuNavigation(telegramId, text);
+    return;
+  }
   const data = state.data || {};
   if (state.state === 'seller_account_provider') {
     if (text.length < 2 || text.length > 30) return bot.sendMessage(telegramId, 'Send a valid provider name, for example CBE or Telebirr.');
@@ -1068,6 +1146,7 @@ async function handleCallback(query) {
       return;
     }
     if (data === 'admin_payments') return showPendingPayments(telegramId);
+    if (data.startsWith('admin_recovery_inspect:')) return showRecoveryInspection(telegramId, data.split(':').slice(1).join(':'));
     if (data === 'admin_pools') return showPoolStatus(telegramId);
     if (data === 'admin_draw') return showDrawControls(telegramId);
     if (data === 'admin_export') return adminExport(telegramId);
@@ -1108,20 +1187,37 @@ async function handleCallback(query) {
     if (data.startsWith('admin_pay_ok:') || data.startsWith('admin_pay_no:')) {
       const purchaseId = data.split(':')[1];
       const purchase = db.getPurchase(purchaseId);
-      if (!purchase) return;
+      if (!purchase) return bot.sendMessage(telegramId, 'Recovery item no longer exists. Refresh Recovery.');
       if (data.startsWith('admin_pay_ok:')) {
         try {
-          db.confirmPurchase(purchaseId, telegramId, { note: 'Approved manually by admin.' });
-          await bot.sendMessage(telegramId, '✅ Payment approved and ticket issued.');
-          await safeSend(purchase.buyer_telegram_id, '✅ Your payment was approved. Your digital ticket is ready.');
-          await sendIssuedTickets(purchase.buyer_telegram_id, purchaseId);
+          const paid = purchase.status === 'expired'
+            ? db.recoverExpiredPurchase(purchaseId, telegramId, { note: 'Recovered and approved manually by admin after outage.' })
+            : db.confirmPurchase(purchaseId, telegramId, { note: 'Approved manually by admin.' });
+          await bot.sendMessage(telegramId, purchase.status === 'expired' ? '✅ Expired payment recovered and ticket issued.' : '✅ Payment approved and ticket issued.');
+          const buyerChat = paid.linked_telegram_id || (paid.source === 'direct' ? paid.buyer_telegram_id : null);
+          if (buyerChat) {
+            await safeSend(buyerChat, '✅ Your payment was approved. Your digital ticket is ready.');
+            await sendIssuedTickets(buyerChat, purchaseId);
+          }
+          if (paid.source === 'seller' && paid.seller?.telegram_id && paid.seller.telegram_id !== buyerChat) {
+            await safeSend(paid.seller.telegram_id, `✅ Admin approved the pending sale for ${paid.buyer_name}.`);
+            await sendIssuedTickets(paid.seller.telegram_id, purchaseId);
+          }
         } catch (error) {
           await bot.sendMessage(telegramId, `⚠️ ${error.message}`);
         }
       } else {
-        db.rejectPurchase(purchaseId, telegramId, 'Rejected by administrator.');
-        await bot.sendMessage(telegramId, 'Payment rejected and the number released.');
-        await safeSend(purchase.buyer_telegram_id, '❌ Your payment could not be confirmed. The reserved number has been released.');
+        try {
+          db.resolveRecoveryPurchaseAsUnpaid(purchaseId, telegramId, 'Rejected/resolved as unpaid by administrator.');
+          await bot.sendMessage(telegramId, '❌ Recovery item resolved as unpaid and any reservation released.');
+          const buyerChat = purchase.linked_telegram_id || (purchase.source === 'direct' ? purchase.buyer_telegram_id : null);
+          if (buyerChat) await safeSend(buyerChat, '❌ Your payment could not be confirmed. The reserved number has been released.');
+          if (purchase.source === 'seller' && purchase.seller?.telegram_id) {
+            await safeSend(purchase.seller.telegram_id, `❌ Admin resolved the pending sale for ${purchase.buyer_name} as unpaid.`);
+          }
+        } catch (error) {
+          await bot.sendMessage(telegramId, `⚠️ ${error.message}`);
+        }
       }
       return;
     }
@@ -1132,34 +1228,41 @@ async function showAdminDashboard(telegramId) {
   const am = langOf(telegramId) !== 'en';
   if (!db.isAdmin(telegramId)) return bot.sendMessage(telegramId, am ? 'የአስተዳዳሪ ፈቃድ ያስፈልጋል።' : 'Admin access required.');
   const s = db.dashboardStats();
+  const recovery = db.recoveryStats();
   const poolLines = s.pools.map((p) => am ? `${p.pool} ብር: ${p.sold}/200 ተሽጧል · ${p.reserved} ተይዟል` : `${p.pool} ETB: ${p.sold}/200 sold · ${p.reserved} reserved`).join('\n');
   await bot.sendMessage(telegramId, am
     ? `🛠 ፍኖተ ብርሃን አስተዳዳሪ
+Build: v${BOT_BUILD}
 
 💰 ገቢ: ${s.revenue} ብር
 ✅ የተከፈሉ ግዢዎች: ${s.paidCount}
 👥 ተጠቃሚዎች: ${s.users}
-⏳ ማረጋገጫ የሚጠብቁ: ${s.pending}
+🚨 ሪከቨሪ የሚፈልጉ: ${recovery.attention}
 🧾 ትኬት ሻጮች: ${s.sellers}
 
 ቀጥታ ሽያጭ: ${s.directRevenue} ብር (${s.directCount})
 በሻጭ የተመዘገበ: ${s.sellerRevenue} ብር (${s.sellerCount})
 
-${poolLines}`
+${poolLines}
+
+🚨 ሪከቨሪው ያልተጠናቀቁ ግዢዎችን እና ባለፉት 7 ቀናት ጊዜያቸው ያለፈባቸውን ሪዘርቬሽኖች ያሳያል።`
     : `🛠 FinoteBirhan Admin
+Build: v${BOT_BUILD}
 
 Revenue: ${s.revenue} ETB
 Paid purchases: ${s.paidCount}
 Customers: ${s.users}
-Pending review: ${s.pending}
+Recovery attention: ${recovery.attention}
 Ticket sellers: ${s.sellers}
 
 Direct: ${s.directRevenue} ETB (${s.directCount})
 Seller-entered sales: ${s.sellerRevenue} ETB (${s.sellerCount})
 
-${poolLines}`,
+${poolLines}
+
+🚨 Recovery includes all unresolved purchases plus reservations that expired during the last 7 days. Recent expired: ${recovery.recentExpired}.`,
     { reply_markup: inlineKeyboard([
-      [{ text: am ? '📊 ትኬት ቁጥሮች' : '📊 Pools', callback_data: 'admin_pools' }, { text: am ? '🧾 ክፍያዎች' : '🧾 Payments', callback_data: 'admin_payments' }],
+      [{ text: am ? '📊 ትኬት ቁጥሮች' : '📊 Pools', callback_data: 'admin_pools' }, { text: '🚨 Recovery', callback_data: 'admin_payments' }],
       [{ text: am ? '🤝 ሻጮች' : '🤝 Sellers', callback_data: 'admin_sellers' }, { text: am ? '🏆 ዕጣ' : '🏆 Draw', callback_data: 'admin_draw' }],
       [{ text: am ? '💳 የክፍያ አካውንቶች' : '💳 Transfer Accounts', callback_data: 'admin_payment_accounts' }],
       [{ text: am ? '📤 ላክ' : '📤 Export', callback_data: 'admin_export' }, { text: am ? '⚙️ ትዕዛዞች' : '⚙️ Commands', callback_data: 'admin_help' }],
@@ -1302,21 +1405,73 @@ ${text}`);
   }
 }
 
+function recoveryActionRows(purchase) {
+  const assessment = db.assessRecoveryPurchase(purchase.id);
+  const rows = [[{ text: '🔎 Inspect', callback_data: `admin_recovery_inspect:${purchase.id}` }]];
+  const hasEvidence = Boolean(purchase.payment_reference || purchase.payment_file_id || purchase.source === 'seller');
+  const canApprove = purchase.status === 'expired'
+    ? Boolean(assessment?.availableForRestore && hasEvidence)
+    : hasEvidence;
+  if (canApprove) {
+    rows.push([{ text: purchase.status === 'expired' ? '♻️ Recover & approve' : '✅ Approve', callback_data: `admin_pay_ok:${purchase.id}` }]);
+  }
+  if (purchase.source === 'direct' && !purchase.payment_reference) {
+    rows.push([{ text: '🔗 Ask link/reference', callback_data: `admin_pay_askref:${purchase.id}` }]);
+  }
+  rows.push([{ text: purchase.status === 'expired' ? '❌ Resolve as unpaid' : '❌ Reject / release', callback_data: `admin_pay_no:${purchase.id}` }]);
+  rows.push([{ text: '🔄 Refresh Recovery', callback_data: 'admin_payments' }]);
+  return rows;
+}
+
+async function showRecoveryInspection(telegramId, purchaseId) {
+  const purchase = db.getPurchase(purchaseId);
+  if (!purchase) return bot.sendMessage(telegramId, 'Recovery item not found. Refresh Recovery.');
+  const assessment = db.assessRecoveryPurchase(purchase.id);
+  const numbers = (purchase.numbers || []).map((n) => `${n.pool} ETB #${formatNumber(n.number)}`).join(' · ');
+  const seller = purchase.seller?.display_name || '-';
+  const safety = purchase.status === 'expired'
+    ? (assessment?.availableForRestore
+        ? 'SAFE TO RESTORE — original number(s) are currently available.'
+        : `BLOCKED — ${assessment?.conflicts?.join('; ') || 'original number(s) unavailable.'}`)
+    : (assessment?.intact ? 'Reservation lock is intact.' : 'WARNING — reservation lock is not intact.');
+  await bot.sendMessage(telegramId,
+    `🔎 RECOVERY INSPECT\n\nPurchase: ${purchase.id}\nStatus: ${String(purchase.status).toUpperCase()}\nSource: ${purchase.source}\nBuyer: ${purchase.buyer_name}\nPhone: ${purchase.buyer_phone}\nSeller: ${seller}\nPackage: ${purchase.package_type}\nNumbers: ${numbers || '-'}\nAmount: ${purchase.amount_etb} ETB\nPayment target: ${purchase.payment_target || '-'}\nTransfer: ${purchase.payment_provider || '-'} · ${purchase.payment_account_name || '-'} · ${purchase.payment_account_number || '-'}\nReference: ${purchase.payment_reference || '-'}\nStored receipt: ${purchase.payment_file_id ? 'YES' : 'NO'}\nCreated: ${purchase.created_at}\nSubmitted: ${purchase.submitted_at || '-'}\nReserved until: ${purchase.reserved_until}\n\n${safety}\n\nNote: ${purchase.note || '-'}`,
+    { reply_markup: inlineKeyboard(recoveryActionRows(purchase)) }
+  );
+  if (purchase.payment_file_id) {
+    const caption = `Stored payment proof · ${purchase.buyer_name} · ${purchase.amount_etb} ETB · ${purchase.id}`;
+    try { await bot.call('sendPhoto', { chat_id: telegramId, photo: purchase.payment_file_id, caption }); }
+    catch {
+      try { await bot.call('sendDocument', { chat_id: telegramId, document: purchase.payment_file_id, caption }); } catch {}
+    }
+  }
+}
+
 async function showPendingPayments(telegramId) {
-  const rows = db.pendingReviews();
-  if (!rows.length) return bot.sendMessage(telegramId, 'No direct payments are waiting for manual review.');
+  const rows = db.recoveryQueue(50, 24 * 7);
+  const stats = db.recoveryStats();
+  if (!rows.length) return bot.sendMessage(telegramId, '✅ Recovery queue is clear. No unresolved or recently expired purchases need attention.');
+  const c = stats.counts || {};
+  await bot.sendMessage(telegramId,
+    `🚨 RECOVERY QUEUE\n\nNeeds attention: ${stats.attention}\nManual review: ${c.manual_review || 0}\nVerification pending: ${c.verification_pending || 0}\nSeller confirmation: ${c.seller_review || 0}\nAwaiting proof/reserved: ${(c.awaiting_proof || 0) + (c.reserved || 0)}\nExpired in last 7 days: ${stats.recentExpired}\n\nInspect uncertain items before approving. Expired purchases can only be restored when their original ticket numbers are still free.`
+  );
   for (const purchase of rows) {
+    const assessment = db.assessRecoveryPurchase(purchase.id);
+    const numbers = (purchase.numbers || []).map((n) => `${n.pool}: #${formatNumber(n.number)}`).join(' · ');
+    const seller = purchase.seller?.display_name ? ` · Seller: ${purchase.seller.display_name}` : '';
+    const evidence = purchase.payment_reference
+      ? `Reference: ${purchase.payment_reference}`
+      : purchase.payment_file_id
+        ? 'Evidence: stored receipt image'
+        : purchase.source === 'seller'
+          ? 'Evidence: seller confirmation pending'
+          : 'Evidence: none stored';
+    const safety = purchase.status === 'expired'
+      ? (assessment?.availableForRestore ? 'Recovery: original number(s) still free.' : `⚠️ Recovery blocked: ${assessment?.conflicts?.join('; ') || 'number unavailable.'}`)
+      : (assessment?.intact ? 'Reservation: intact.' : '⚠️ Reservation lock is not intact.');
     await bot.sendMessage(telegramId,
-      `🧾 ${purchase.buyer_name}\n${purchase.amount_etb} ETB\n${purchase.numbers.map(n => `${n.pool}: #${formatNumber(n.number)}`).join(' · ')}\nTransfer account: ${purchase.payment_provider || 'legacy/unknown'}${purchase.payment_account_name ? ` · ${purchase.payment_account_name}` : ''}${purchase.payment_account_number ? ` · ${purchase.payment_account_number}` : ''}\nReference: ${purchase.payment_reference || 'receipt only'}\n${purchase.note || ''}`,
-      { reply_markup: inlineKeyboard(purchase.payment_reference ? [[
-        { text: '✅ Approve manually', callback_data: `admin_pay_ok:${purchase.id}` },
-        { text: '🔗 Ask link/reference', callback_data: `admin_pay_askref:${purchase.id}` }
-      ], [
-        { text: '❌ Reject', callback_data: `admin_pay_no:${purchase.id}` }
-      ]] : [[
-        { text: '🔗 Ask transaction link', callback_data: `admin_pay_askref:${purchase.id}` },
-        { text: '❌ Reject', callback_data: `admin_pay_no:${purchase.id}` }
-      ]]) }
+      `🚨 ${purchase.buyer_name}\nStatus: ${String(purchase.status).toUpperCase()} · Source: ${purchase.source}${seller}\nPhone: ${purchase.buyer_phone}\nAmount: ${purchase.amount_etb} ETB\nNumbers: ${numbers || '-'}\n${evidence}\nCreated: ${purchase.created_at}\nReserved until: ${purchase.reserved_until}\n${safety}\n${purchase.note || ''}`,
+      { reply_markup: inlineKeyboard(recoveryActionRows(purchase)) }
     );
   }
 }
