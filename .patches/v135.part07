@@ -1,0 +1,22 @@
+--- a/bot/backend/tests/sellerAccountRouting.test.js
++++ b/bot/backend/tests/sellerAccountRouting.test.js
+@@ -25,7 +25,7 @@
+   fs.rmSync(dir, { recursive: true, force: true });
+ }
+ 
+-test('Seller Account menu action is never consumed as payment proof', async () => {
++test('runtime update layer leaves Seller Account navigation for the core router', async () => {
+   const { db, dir } = makeDb();
+   const purchase = db.reservePurchase({ telegramId: 1, packageType: '50', selectedNumbers: { 50: 41 } });
+   db.setUserState(1, 'awaiting_payment', { purchaseId: purchase.id });
+@@ -39,7 +39,9 @@
+   };
+ 
+   await bot.getUpdates({ timeout: 0 });
+-  assert.equal(db.getUserState(1), null);
++  const state = db.getUserState(1);
++  assert.equal(state?.state, 'awaiting_payment');
++  assert.equal(state?.data?.purchaseId, purchase.id);
+   assert.equal(db.getPurchase(purchase.id).status, 'awaiting_proof');
+   close(db, dir);
+ });
