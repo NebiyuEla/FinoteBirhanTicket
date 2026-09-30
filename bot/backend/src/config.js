@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const DEFAULT_MINI_APP_URL = 'https://finotebirhan-ticket.vercel.app';
+
 function loadDotEnv(file = '.env') {
   const full = path.resolve(process.cwd(), file);
   if (!fs.existsSync(full)) return;
@@ -31,9 +33,20 @@ function asSafeId(name) {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
+function asHttpsUrl(value, fallback) {
+  const candidate = String(value || '').trim() || fallback;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'https:') return fallback;
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return fallback;
+  }
+}
+
 export const config = {
   botToken: process.env.BOT_TOKEN?.trim() || '',
-  miniAppUrl: process.env.MINI_APP_URL?.trim() || '',
+  miniAppUrl: asHttpsUrl(process.env.MINI_APP_URL, DEFAULT_MINI_APP_URL),
   adminSetupCode: process.env.ADMIN_SETUP_CODE?.trim() || '',
   adminTelegramId: asSafeId('ADMIN_TELEGRAM_ID'),
   defaultPaymentProvider: process.env.DEFAULT_PAYMENT_PROVIDER?.trim() || '',
