@@ -1,0 +1,116 @@
++    if (!this.isAdmin(reviewerId)) throw new Error('Admin access required for expired-payment recovery.');
++    this.releaseExpiredReservations();
++    const purchase = this.getPurchase(purchaseId);
++    if (!purchase) throw new Error('Purchase not found.');
++    if (purchase.status !== 'expired') throw new Error(`Purchase is ${purchase.status}, not expired.`);
++    if (purchase.source === 'direct' && !purchase.payment_reference && !purchase.payment_file_id) {
++      throw new Error('Expired direct purchase has no stored payment evidence. Ask the buyer for a transaction reference before approval.');
++    }
++    const assessment = this.assessRecoveryPurchase(purchaseId);
++    if (!assessment?.availableForRestore) {
++      throw new Error(`Cannot recover: original ticket number${purchase.numbers.length === 1 ? '' : 's'} ${purchase.numbers.length === 1 ? 'is' : 'are'} no longer available.${assessment?.conflicts?.length ? ` ${assessment.conflicts.join('; ')}` : ''}`);
++    }
++
++    const restoredUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
++    this.db.exec('BEGIN IMMEDIATE');
++    try {
++      const fresh = this.db.prepare('SELECT status FROM purchases WHERE id=?').get(purchaseId);
++      if (!fresh || fresh.status !== 'expired') throw new Error('Purchase status changed. Refresh Recovery and try again.');
++      for (const num of purchase.numbers) {
++        const row = this.db.prepare('SELECT status,purchase_id FROM ticket_numbers WHERE pool=? AND number=?').get(num.pool, num.number);
++        if (!row || row.status !== 'available' || row.purchase_id) {
++          throw new Error(`${num.pool} ETB #${String(num.number).padStart(3, '0')} is no longer available.`);
++        }
++        this.db.prepare(`UPDATE ticket_numbers SET status='reserved',purchase_id=?,reserved_until=?,buyer_telegram_id=?,seller_id=? WHERE pool=? AND number=?`)
++          .run(purchase.id, restoredUntil, purchase.linked_telegram_id ?? purchase.buyer_telegram_id, purchase.seller_id ?? null, num.pool, num.number);
++      }
++      this.db.prepare(`UPDATE purchases SET status='manual_review',reserved_until=?,reviewed_by=?,note=TRIM(COALESCE(note,'') || ' [recovery lock restored]') WHERE id=?`)
++        .run(restoredUntil, reviewerId, purchaseId);
++      this.db.exec('COMMIT');
++    } catch (error) {
++      this.db.exec('ROLLBACK');
++      throw error;
++    }
++
++    try {
++      const paid = this.confirmPurchase(purchaseId, reviewerId, { note });
++      this.log(reviewerId, 'purchase.recovered_after_expiry', 'purchase', purchaseId, { originalStatus: 'expired' });
++      return paid;
++    } catch (error) {
++      this.db.exec('BEGIN IMMEDIATE');
++      try {
++        this.db.prepare(`UPDATE ticket_numbers SET status='available',purchase_id=NULL,reserved_until=NULL,buyer_telegram_id=NULL,seller_id=NULL WHERE purchase_id=? AND status='reserved'`).run(purchaseId);
++        this.db.prepare(`UPDATE purchases SET status='expired',reserved_until=?,note=TRIM(COALESCE(note,'') || ' [recovery confirmation failed]') WHERE id=?`).run(nowIso(), purchaseId);
++        this.db.exec('COMMIT');
++      } catch {
++        try { this.db.exec('ROLLBACK'); } catch {}
++      }
++      throw error;
++    }
++  }
++
++  resolveRecoveryPurchaseAsUnpaid(purchaseId, reviewerId, note = 'Resolved as unpaid by administrator.') {
++    if (!this.isAdmin(reviewerId)) throw new Error('Admin access required.');
++    this.releaseExpiredReservations();
++    const purchase = this.getPurchase(purchaseId);
++    if (!purchase) throw new Error('Purchase not found.');
++    if (purchase.status !== 'expired') return this.rejectPurchase(purchaseId, reviewerId, note);
++    this.db.prepare(`UPDATE purchases SET status='rejected',reviewed_by=?,note=?,reserved_until=? WHERE id=?`)
++      .run(reviewerId, note, nowIso(), purchaseId);
++    this.log(reviewerId, 'purchase.recovery_rejected', 'purchase', purchaseId, { previousStatus: 'expired' });
++    return this.getPurchase(purchaseId);
++  }
++
+   sellerPendingReviews(sellerId, limit = 20) {
+     return this.db.prepare(`SELECT id FROM purchases WHERE seller_id=? AND status='seller_review' ORDER BY submitted_at ASC LIMIT ?`).all(sellerId, limit).map((p) => this.getPurchase(p.id));
+   }
+--- a/bot/backend/src/runtimeGuards.js
++++ b/bot/backend/src/runtimeGuards.js
+@@ -13,16 +13,6 @@
+   'cancel_pay:'
+ ];
+ 
+-const MAIN_MENU_ACTIONS = new Set([
+-  '🎫 የእኔ ትኬቶች', '🎫 My Tickets',
+-  '🏆 ውጤት', '🏆 Results',
+-  '📈 የሽያጭ ሪፖርት', '📈 Seller Stats',
+-  '💳 የሻጭ አካውንት', '💳 Seller Account',
+-  '🌐 ቋንቋ', '🌐 Language',
+-  '🛠 አስተዳዳሪ', '🛠 Admin',
+-  '🎟 ትኬት ይግዙ', '🎟 Buy Ticket'
+-]);
+-const pendingMenuActions = new Set();
+ const pendingSellerReviewInbox = new Map();
+ const recoverySummaryChats = new Set();
+ let activeDb = null;
+@@ -90,14 +80,6 @@
+   activeDb = this;
+   const state = originalGetUserState.call(this, telegramId);
+ 
+-  // Reply-keyboard buttons are navigation. If the user taps one while a wizard
+-  // or payment state is active, let index.js handle the button normally instead
+-  // of consuming its label as payment proof/account data.
+-  if (pendingMenuActions.delete(Number(telegramId))) {
+-    if (state) this.clearUserState(telegramId);
+-    return null;
+-  }
+-
+   if (state?.state !== 'awaiting_payment') return state;
+ 
+   this.releaseExpiredReservations();
+@@ -403,7 +385,8 @@
+   let nextText = String(text || '');
+   let nextExtra = cloneMarkup(extra);
+ 
+-  if (nextText.includes('🛠 FinoteBirhan Admin') || nextText.includes('🛠 ፍኖተ ብርሃን አስተዳዳሪ')) {
++  const coreRecoveryDashboard = nextText.includes('Recovery attention:') || nextText.includes('🚨 ሪከቨሪ የሚፈልጉ:');
++  if (!coreRecoveryDashboard && (nextText.includes('🛠 FinoteBirhan Admin') || nextText.includes('🛠 ፍኖተ ብርሃን አስተዳዳሪ'))) {
+     const recovery = activeDb?.recoveryStats?.() || { attention: 0, recentExpired: 0 };
+     nextText = nextText
+       .replace(/Pending review:\s*\d+/, `Recovery attention: ${recovery.attention}`)
+@@ -421,7 +404,8 @@
+   }
+ 
+   const recoveryId = recoveryPurchaseIdFromMarkup(nextExtra);
+-  const isRecoveryCard = Boolean(recoveryId && nextText.includes('\nStatus: '));
++  const coreRecoveryCard = nextText.startsWith('🚨 ') && nextText.includes('\nStatus: ');
