@@ -1,0 +1,69 @@
+name: Apply Revenue Reconciliation And Expiry Repair
+
+on:
+  push:
+    branches:
+      - fix/revenue-reconciliation-expiry
+    paths:
+      - '.patches/revenue_reconciliation_expiry.py'
+      - '.github/workflows/apply-revenue-reconciliation-expiry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/revenue-reconciliation-expiry
+          fetch-depth: 0
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: bot/backend/package.json
+
+      - name: Apply patch
+        run: python3 .patches/revenue_reconciliation_expiry.py
+
+      - name: Install dependencies
+        working-directory: bot/backend
+        run: npm install --package-lock=false --no-audit --no-fund
+
+      - name: Syntax checks
+        run: |
+          node --check bot/backend/src/index.js
+          node --check bot/backend/src/db.js
+          node --check bot/backend/src/config.js
+          node --check bot/backend/tests/sellerCashAccounting.test.js
+          node --check bot/backend/tests/navigationRecoveryCore.test.js
+
+      - name: Full regression suite
+        working-directory: bot/backend
+        run: npm test
+
+      - name: Verify invariants
+        run: |
+          grep -F "Confirmed money received:" bot/backend/src/index.js
+          grep -F "Reconcile Revenue" bot/backend/src/index.js
+          grep -F "receipt_status='confirmed'" bot/backend/src/db.js
+          grep -F "submitted_at IS NULL" bot/backend/src/db.js
+          grep -F "markSellerPaymentClaimed" bot/backend/src/db.js
+          grep -F "receiptVerified: true" bot/backend/src/index.js
+          grep -F "reservationMinutes: Math.max(60" bot/backend/src/config.js
+
+      - name: Commit validated source and remove staging files
+        run: |
+          rm -f .patches/revenue_reconciliation_expiry.py .github/workflows/apply-revenue-reconciliation-expiry.yml
+          rmdir .patches 2>/dev/null || true
+          git config user.name "Cachilupi"
+          git config user.email "nebiyuelyas3@gmail.com"
+          git add -A
+          git commit -m "fix: reconcile real revenue and protect paid reservations"
+          git push origin HEAD:fix/revenue-reconciliation-expiry
