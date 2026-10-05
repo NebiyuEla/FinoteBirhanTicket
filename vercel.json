@@ -1,0 +1,4 @@
+{
+  "buildCommand": "python3 .patches/live_miniapp_availability.py && cd bot/backend && npm install --package-lock=false --no-audit --no-fund && npm test && cd ../.. && rm -rf public && mkdir -p public && cp index.html app.js styles.css logo.svg version.txt public/ && cp -R assets public/",
+  "outputDirectory": "public"
+}
