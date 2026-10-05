@@ -6,6 +6,7 @@ on:
       - fix/live-miniapp-availability
     paths:
       - '.patches/live_miniapp_availability.py'
+      - '.patches/session_retry_fix.py'
       - '.github/workflows/apply-live-miniapp-availability.yml'
   workflow_dispatch:
 
@@ -22,7 +23,7 @@ defaults:
 
 jobs:
   apply-test-commit:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
@@ -37,8 +38,10 @@ jobs:
           cache: npm
           cache-dependency-path: bot/backend/package.json
 
-      - name: Apply patch
-        run: python .patches/live_miniapp_availability.py
+      - name: Apply patches
+        run: |
+          python3 .patches/live_miniapp_availability.py
+          python3 .patches/session_retry_fix.py
 
       - name: Install backend dependencies
         working-directory: bot/backend
@@ -50,6 +53,7 @@ jobs:
           node --check bot/backend/src/index.js
           node --check bot/backend/src/db.js
           node --check bot/backend/tests/liveMiniAppAvailability.test.js
+          node --check bot/backend/tests/sessionRetry.test.js
           node --check bot/backend/tests/navigationRecoveryCore.test.js
 
       - name: Full regression suite
@@ -66,15 +70,17 @@ jobs:
           grep -F "if (unavailable[state.activePool].has(number)) continue;" app.js
           grep -F "SNAPSHOT_MAX_AGE_MS = 5 * 60_000" app.js
           grep -F "app.js?v=20261005-live-availability" index.html
+          grep -F "peekWebSession(token, telegramId)" bot/backend/src/db.js
+          grep -F "const session = db.peekWebSession(payload.session, telegramId);" bot/backend/src/index.js
           if grep -F "rows.push([{ text: buyText, web_app:" bot/backend/src/index.js; then exit 1; fi
           if grep -F 'dot taken' index.html; then exit 1; fi
 
       - name: Commit validated source and remove staging files
         run: |
-          rm -f .patches/live_miniapp_availability.py .github/workflows/apply-live-miniapp-availability.yml vercel.json
+          rm -f .patches/live_miniapp_availability.py .patches/session_retry_fix.py .patches/vercel_validate.sh .github/workflows/apply-live-miniapp-availability.yml vercel.json
           rmdir .patches 2>/dev/null || true
           git config user.name "Cachilupi"
           git config user.email "nebiyuelyas3@gmail.com"
           git add -A
-          git commit -m "fix: keep Mini App ticket availability fresh"
+          git commit -m "fix: keep Mini App inventory fresh and retry-safe"
           git push origin HEAD:fix/live-miniapp-availability
