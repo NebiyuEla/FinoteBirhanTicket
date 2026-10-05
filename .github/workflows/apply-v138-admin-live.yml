@@ -6,6 +6,7 @@ on:
       - fix/admin-dashboard-v138
     paths:
       - '.patches/v138_admin_live.py'
+      - '.patches/fix_patch.py'
       - '.github/workflows/apply-v138-admin-live.yml'
   workflow_dispatch:
 
@@ -30,7 +31,9 @@ jobs:
           cache: npm
           cache-dependency-path: bot/backend/package.json
       - name: Apply patch
-        run: python .patches/v138_admin_live.py
+        run: |
+          python .patches/fix_patch.py
+          python .patches/v138_admin_live.py
       - name: Install backend dependencies
         working-directory: bot/backend
         run: npm install --package-lock=false --no-audit --no-fund
@@ -54,7 +57,7 @@ jobs:
           if grep -F 'dot taken' index.html; then exit 1; fi
       - name: Commit validated source
         run: |
-          rm -f .patches/v138_admin_live.py .github/workflows/apply-v138-admin-live.yml
+          rm -f .patches/v138_admin_live.py .patches/fix_patch.py .github/workflows/apply-v138-admin-live.yml
           rmdir .patches 2>/dev/null || true
           git config user.name "Cachilupi"
           git config user.email "nebiyuelyas3@gmail.com"
