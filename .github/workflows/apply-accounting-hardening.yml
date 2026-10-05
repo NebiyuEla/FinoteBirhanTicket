@@ -1,0 +1,66 @@
+name: Apply Accounting Hardening
+
+on:
+  push:
+    branches:
+      - fix/accounting-hardening-work
+    paths:
+      - '.patches/accounting_hardening.py'
+      - '.github/workflows/apply-accounting-hardening.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/accounting-hardening-work
+          fetch-depth: 0
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: bot/backend/package.json
+
+      - name: Apply accounting hardening
+        run: python3 .patches/accounting_hardening.py
+
+      - name: Install dependencies
+        working-directory: bot/backend
+        run: npm install --no-audit --no-fund
+
+      - name: Syntax checks
+        working-directory: bot/backend
+        run: |
+          node --check src/index.js
+          node --check src/db.js
+          node --check tests/core.test.js
+          node --check tests/sellerCashAccounting.test.js
+
+      - name: Full regression suite
+        working-directory: bot/backend
+        run: npm test
+
+      - name: Verify accounting invariants in source
+        run: |
+          grep -F "Seller-originated sales require FinoteBirhan admin payment approval" bot/backend/src/db.js
+          grep -F "Ticket sales value:" bot/backend/src/index.js
+          grep -F "Bundle = 300 ETB" bot/backend/src/index.js
+          grep -F "const normalizedPaymentTarget = 'finote';" bot/backend/src/db.js
+
+      - name: Commit validated source and remove staging files
+        run: |
+          rm -f .patches/accounting_hardening.py .github/workflows/apply-accounting-hardening.yml
+          rmdir .patches 2>/dev/null || true
+          git config user.name "Cachilupi"
+          git config user.email "nebiyuelyas3@gmail.com"
+          git add -A
+          git commit -m "fix: harden ticket accounting and seller payment approval"
+          git push origin HEAD:fix/accounting-hardening-work
