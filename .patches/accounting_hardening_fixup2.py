@@ -39,14 +39,11 @@ replace_once(
     "      WHERE source='seller' AND status IN ('reserved','awaiting_proof','verification_pending','seller_review','manual_review')`);\n"
 )
 
-# Build-version regression expectation.
 replace_once(
     'bot/backend/tests/navigationRecoveryCore.test.js',
     "  assert.match(source, /const BOT_BUILD = '1\\.3\\.5';/);\n",
     "  assert.match(source, /const BOT_BUILD = '1\\.3\\.6';/);\n"
 )
-
-# Seller-originated ticket-linking fixture now uses the existing admin reviewer.
 replace_once(
     'bot/backend/tests/runtimeGuards.test.js',
     "  db.confirmPurchase(sale.id, 2, { note: 'paid' });\n",
@@ -62,7 +59,7 @@ replace_once(
     "    await notifyAdminsOfReview(updated, message);\n"
 )
 
-# Remove misleading seller-owned account copy from the seller stats panel. Legacy account data remains readable for audit only.
+# Remove misleading seller-owned account copy from seller stats.
 replace_once(
     'bot/backend/src/index.js',
     "💳 የእርስዎ የክፍያ አካውንት\n${account}\n\n🧾 የቅርብ ሽያጮች\n",
@@ -78,50 +75,22 @@ replace_once(
     "    { reply_markup: inlineKeyboard([[{ text: am ? '💳 የክፍያ አካውንት ቀይር' : '💳 Update payment account', callback_data: 'seller_account' }],[{ text: am ? '🔄 አድስ' : '🔄 Refresh', callback_data: 'seller_panel' }]]) }\n",
     "    { reply_markup: inlineKeyboard([[{ text: am ? '🔄 አድስ' : '🔄 Refresh', callback_data: 'seller_panel' }]]) }\n"
 )
-
-# Seller list should report sales value, not claim the amount was physically collected.
 replace_once(
     'bot/backend/src/index.js',
     "      `Collected: ${seller.revenue} ETB · Pending: ${seller.pending_count}`\n",
     "      `Sales value: ${seller.revenue} ETB · Pending: ${seller.pending_count}`\n"
 )
 
-# Seller mini-app: remove seller-owned payment destination from the active UI and payload.
-replace_once('app.js', "  const sellerPayAvailable = params.get('sellerpay') === '1';\n", "  const sellerPayAvailable = false;\n")
-replace_once(
-    'app.js',
-    "      paymentDestination:'Where will the buyer pay?', finoteBirhan:'FinoteBirhan', sellerAccount:'My account',\n",
-    "      paymentDestination:'Payment destination', finoteBirhan:'FinoteBirhan account', sellerAccount:'Unavailable',\n"
-)
-replace_once(
-    'app.js',
-    "      sellerPayNote:'The buyer pays your account. After you see the money, tap SOLD.',\n"
-    "      finotePayNote:'The buyer pays the FinoteBirhan account. After payment is confirmed, tap SOLD.',\n",
-    "      sellerPayNote:'Seller-owned payment destinations are disabled. All sales settle to FinoteBirhan.',\n"
-    "      finotePayNote:'All seller sales settle to the FinoteBirhan account. After the buyer pays, FinoteBirhan admin approval is required before the ticket becomes SOLD.',\n"
-)
-replace_once(
-    'app.js',
-    "      paymentDestination:'ክፍያ የት ይገባ?', finoteBirhan:'ፍኖተ ብርሃን', sellerAccount:'የእኔ አካውንት',\n",
-    "      paymentDestination:'የክፍያ መድረሻ', finoteBirhan:'ፍኖተ ብርሃን አካውንት', sellerAccount:'አይገኝም',\n"
-)
-replace_once(
-    'app.js',
-    "      sellerPayNote:'ገዢው ወደ እርስዎ አካውንት ይከፍላል። ገንዘቡን ካዩ በኋላ “ተሽጧል” ይጫኑ።',\n"
-    "      finotePayNote:'ገዢው ወደ ፍኖተ ብርሃን አካውንት ይከፍላል። ክፍያውን ካረጋገጡ በኋላ “ተሽጧል” ይጫኑ።',\n",
-    "      sellerPayNote:'የሻጭ የግል አካውንት ለአዲስ ሽያጭ አይጠቀምም። ሁሉም ሽያጭ ወደ ፍኖተ ብርሃን ይመዘገባል።',\n"
-    "      finotePayNote:'ሁሉም የሻጭ ሽያጭ ወደ ፍኖተ ብርሃን አካውንት ይመዘገባል። ገዢው ከከፈለ በኋላ ትኬቱ SOLD ከመሆኑ በፊት የፍኖተ ብርሃን አስተዳዳሪ ማረጋገጥ አለበት።',\n"
-)
-replace_once(
-    'app.js',
-    "  paySeller.disabled = !sellerPayAvailable;\n",
-    "  paySeller.disabled = true;\n  paySeller.hidden = true;\n"
-)
-replace_once(
-    'app.js',
-    "      payload.payment_target = state.paymentTarget;\n",
-    "      payload.payment_target = 'finote';\n"
-)
+# Seller mini-app: one settlement destination only.
+replace_once('app.js', "  const sellerPayAvailable = params.get('sellerpay') === '1';", "  const sellerPayAvailable = false;")
+replace_once('app.js', "paymentDestination:'Where will the buyer pay?', finoteBirhan:'FinoteBirhan', sellerAccount:'My account'", "paymentDestination:'Payment destination', finoteBirhan:'FinoteBirhan account', sellerAccount:'Unavailable'")
+replace_once('app.js', "sellerPayNote:'The buyer pays your account. After you see the money, tap SOLD.'", "sellerPayNote:'Seller-owned payment destinations are disabled. All sales settle to FinoteBirhan.'")
+replace_once('app.js', "finotePayNote:'The buyer pays the FinoteBirhan account. After payment is confirmed, tap SOLD.'", "finotePayNote:'All seller sales settle to the FinoteBirhan account. After the buyer pays, FinoteBirhan admin approval is required before the ticket becomes SOLD.'")
+replace_once('app.js', "paymentDestination:'ክፍያ የት ይገባ?', finoteBirhan:'ፍኖተ ብርሃን', sellerAccount:'የእኔ አካውንት'", "paymentDestination:'የክፍያ መድረሻ', finoteBirhan:'ፍኖተ ብርሃን አካውንት', sellerAccount:'አይገኝም'")
+replace_once('app.js', "sellerPayNote:'ገዢው ወደ እርስዎ አካውንት ይከፍላል። ገንዘቡን ካዩ በኋላ “ተሽጧል” ይጫኑ።'", "sellerPayNote:'የሻጭ የግል አካውንት ለአዲስ ሽያጭ አይጠቀምም። ሁሉም ሽያጭ ወደ ፍኖተ ብርሃን ይመዘገባል።'")
+replace_once('app.js', "finotePayNote:'ገዢው ወደ ፍኖተ ብርሃን አካውንት ይከፍላል። ክፍያውን ካረጋገጡ በኋላ “ተሽጧል” ይጫኑ።'", "finotePayNote:'ሁሉም የሻጭ ሽያጭ ወደ ፍኖተ ብርሃን አካውንት ይመዘገባል። ገዢው ከከፈለ በኋላ ትኬቱ SOLD ከመሆኑ በፊት የፍኖተ ብርሃን አስተዳዳሪ ማረጋገጥ አለበት።'")
+replace_once('app.js', "  paySeller.disabled = !sellerPayAvailable;", "  paySeller.disabled = true;\n  paySeller.hidden = true;")
+replace_once('app.js', "      payload.payment_target = state.paymentTarget;", "      payload.payment_target = 'finote';")
 replace_once(
     'index.html',
     '<button id="paySeller" class="pay-option" type="button" data-pay="seller" data-i18n="sellerAccount">የእኔ አካውንት</button>',
