@@ -1,0 +1,63 @@
+name: Apply v1.3.8 Admin and Live Availability
+
+on:
+  push:
+    branches:
+      - fix/admin-dashboard-v138
+    paths:
+      - '.patches/v138_admin_live.py'
+      - '.github/workflows/apply-v138-admin-live.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/admin-dashboard-v138
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: bot/backend/package.json
+      - name: Apply patch
+        run: python .patches/v138_admin_live.py
+      - name: Install backend dependencies
+        working-directory: bot/backend
+        run: npm install --package-lock=false --no-audit --no-fund
+      - name: Syntax checks
+        run: |
+          node --check app.js
+          node --check bot/backend/src/index.js
+          node --check bot/backend/src/db.js
+          node --check bot/backend/tests/adminLiveV138.test.js
+      - name: Full regression suite
+        working-directory: bot/backend
+        run: npm test
+      - name: Verify invariants
+        run: |
+          grep -F "const BOT_BUILD = '1.3.8';" bot/backend/src/index.js
+          grep -F "Confirmed received:" bot/backend/src/index.js
+          grep -F "Accounting check: BALANCED" bot/backend/src/index.js
+          grep -F "getUsableWebSession(payload.session, telegramId)" bot/backend/src/index.js
+          grep -F "if (unavailable[state.activePool].has(number)) continue;" app.js
+          grep -F "SNAPSHOT_MAX_AGE_MS = 5 * 60_000" app.js
+          if grep -F 'dot taken' index.html; then exit 1; fi
+      - name: Commit validated source
+        run: |
+          rm -f .patches/v138_admin_live.py .github/workflows/apply-v138-admin-live.yml
+          rmdir .patches 2>/dev/null || true
+          git config user.name "Cachilupi"
+          git config user.email "nebiyuelyas3@gmail.com"
+          git add -A
+          git commit -m "fix: simplify admin stats and keep ticket availability live"
+          git push origin HEAD:fix/admin-dashboard-v138
