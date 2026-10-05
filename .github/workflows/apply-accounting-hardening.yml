@@ -7,6 +7,7 @@ on:
     paths:
       - '.patches/accounting_hardening.py'
       - '.patches/accounting_hardening_fixup.py'
+      - '.patches/accounting_hardening_fixup2.py'
       - '.github/workflows/apply-accounting-hardening.yml'
   workflow_dispatch:
 
@@ -34,6 +35,7 @@ jobs:
         run: |
           python3 .patches/accounting_hardening.py
           python3 .patches/accounting_hardening_fixup.py
+          python3 .patches/accounting_hardening_fixup2.py
 
       - name: Install dependencies
         working-directory: bot/backend
@@ -47,6 +49,11 @@ jobs:
           node --check src/db.js
           node --check tests/core.test.js
           node --check tests/sellerCashAccounting.test.js
+          node --check tests/runtimeGuards.test.js
+          node --check tests/navigationRecoveryCore.test.js
+
+      - name: Mini App syntax check
+        run: node --check app.js
 
       - name: Full regression suite
         working-directory: bot/backend
@@ -59,10 +66,12 @@ jobs:
           grep -F "Bundle = 300 ETB" bot/backend/src/index.js
           grep -F "const normalizedPaymentTarget = 'finote';" bot/backend/src/db.js
           grep -F "Seller-entered sales:" bot/backend/src/index.js
+          grep -F "payload.payment_target = 'finote';" app.js
+          grep -F "paySeller.hidden = true;" app.js
 
       - name: Commit validated source and remove staging files
         run: |
-          rm -f .patches/accounting_hardening.py .patches/accounting_hardening_fixup.py .github/workflows/apply-accounting-hardening.yml
+          rm -f .patches/accounting_hardening.py .patches/accounting_hardening_fixup.py .patches/accounting_hardening_fixup2.py .github/workflows/apply-accounting-hardening.yml
           rmdir .patches 2>/dev/null || true
           git config user.name "Cachilupi"
           git config user.email "nebiyuelyas3@gmail.com"
