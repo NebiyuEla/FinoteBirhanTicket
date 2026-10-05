@@ -1,0 +1,234 @@
+name: Apply seller cash accounting fix
+
+on:
+  push:
+    branches:
+      - fix/seller-cash-accounting
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/seller-cash-accounting
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Patch seller cash accounting
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          db_path = Path('bot/backend/src/db.js')
+          db = db_path.read_text()
+
+          old = """    const seller = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid' AND source='seller'`).get();
+    const pending = this.db.prepare(`SELECT COUNT(*) AS c FROM purchases WHERE status IN ('verification_pending','seller_review','manual_review')`).get().c;
+"""
+          new = """    const seller = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid' AND source='seller'`).get();
+    const sellerPackages = this.db.prepare(`SELECT package_type, COUNT(*) AS sales, COALESCE(SUM(amount_etb),0) AS amount
+      FROM purchases WHERE status='paid' AND source='seller'
+      GROUP BY package_type`).all();
+    const pending = this.db.prepare(`SELECT COUNT(*) AS c FROM purchases WHERE status IN ('verification_pending','seller_review','manual_review')`).get().c;
+"""
+          assert old in db, 'dashboard seller query block not found'
+          db = db.replace(old, new, 1)
+
+          old = """    return { users, paidCount: paid.c, revenue: paid.revenue, directCount: direct.c, directRevenue: direct.revenue, sellerCount: seller.c, sellerRevenue: seller.revenue, pending, sellers, pools };
+"""
+          new = """    // Seller-entered purchases are cash collected by the seller. They are sales activity,
+    // not FinoteBirhan revenue. Revenue therefore reflects only direct paid purchases.
+    return { users, paidCount: paid.c, revenue: direct.revenue, directCount: direct.c, directRevenue: direct.revenue, sellerCount: seller.c, sellerRevenue: seller.revenue, sellerPackages, pending, sellers, pools };
+"""
+          assert old in db, 'dashboard return block not found'
+          db = db.replace(old, new, 1)
+
+          old = """    const customers = this.db.prepare(`SELECT COUNT(DISTINCT buyer_phone) AS c FROM purchases WHERE seller_id=? AND status='paid'`).get(sellerId).c;
+    return { seller, paidCount: paid.c, revenue: paid.revenue, pending, tickets, customers };
+"""
+          new = """    const customers = this.db.prepare(`SELECT COUNT(DISTINCT buyer_phone) AS c FROM purchases WHERE seller_id=? AND status='paid'`).get(sellerId).c;
+    const packages = this.db.prepare(`SELECT package_type, COUNT(*) AS sales, COALESCE(SUM(amount_etb),0) AS amount
+      FROM purchases WHERE seller_id=? AND status='paid'
+      GROUP BY package_type`).all(sellerId);
+    return { seller, paidCount: paid.c, revenue: paid.revenue, pending, tickets, customers, packages };
+"""
+          assert old in db, 'sellerStats block not found'
+          db = db.replace(old, new, 1)
+          db_path.write_text(db)
+
+          index_path = Path('bot/backend/src/index.js')
+          index = index_path.read_text()
+
+          marker = """async function showSellerPanel(telegramId) {
+"""
+          helper = """function formatSellerPackageBreakdown(rows, am = false) {
+  const byType = new Map((rows || []).map((row) => [String(row.package_type), row]));
+  const types = [
+    ['bundle', am ? 'Bundle' : 'Bundle'],
+    ['200', '200'],
+    ['100', '100'],
+    ['50', '50']
+  ];
+  return types.map(([key, label]) => {
+    const row = byType.get(key);
+    const sales = Number(row?.sales || 0);
+    const amount = Number(row?.amount || 0);
+    return `${label}: ${sales} (${amount} ${am ? 'ብር' : 'ETB'})`;
+  }).join(' · ');
+}
+
+async function showSellerPanel(telegramId) {
+"""
+          assert marker in index, 'showSellerPanel marker not found'
+          index = index.replace(marker, helper, 1)
+
+          old = """  const recent = db.recentSellerSales(seller.id, 6);
+"""
+          new = """  const recent = db.recentSellerSales(seller.id, 6);
+  const packageBreakdown = formatSellerPackageBreakdown(stats.packages, am);
+"""
+          assert old in index, 'seller recent block not found'
+          index = index.replace(old, new, 1)
+
+          old = """💰 ጠቅላላ ሽያጭ: ${stats.revenue} ብር
+⏳ በመጠባበቅ ላይ: ${stats.pending}
+"""
+          new = """💰 በጥሬ ገንዘብ የተሰበሰበ: ${stats.revenue} ብር
+📦 ሽያጭ በአይነት: ${packageBreakdown}
+⏳ በመጠባበቅ ላይ: ${stats.pending}
+"""
+          assert old in index, 'Amharic seller panel totals not found'
+          index = index.replace(old, new, 1)
+
+          old = """Collected: ${stats.revenue} ETB
+Pending: ${stats.pending}
+"""
+          new = """Cash collected: ${stats.revenue} ETB
+Sales by type: ${packageBreakdown}
+Pending: ${stats.pending}
+"""
+          assert old in index, 'English seller panel totals not found'
+          index = index.replace(old, new, 1)
+
+          old = """  const recovery = db.recoveryStats();
+  const poolLines = s.pools.map((p) => am ? `${p.pool} ብር: ${p.sold}/200 ተሽጧል · ${p.reserved} ተይዟል` : `${p.pool} ETB: ${p.sold}/200 sold · ${p.reserved} reserved`).join('\\n');
+"""
+          new = """  const recovery = db.recoveryStats();
+  const sellerPackageBreakdown = formatSellerPackageBreakdown(s.sellerPackages, am);
+  const poolLines = s.pools.map((p) => am ? `${p.pool} ብር: ${p.sold}/200 ተሽጧል · ${p.reserved} ተይዟል` : `${p.pool} ETB: ${p.sold}/200 sold · ${p.reserved} reserved`).join('\\n');
+"""
+          assert old in index, 'admin dashboard setup block not found'
+          index = index.replace(old, new, 1)
+
+          old = """ቀጥታ ሽያጭ: ${s.directRevenue} ብር (${s.directCount})
+በሻጭ የተመዘገበ: ${s.sellerRevenue} ብር (${s.sellerCount})
+
+${poolLines}
+"""
+          new = """ቀጥታ ገቢ: ${s.directRevenue} ብር (${s.directCount})
+በሻጭ የተመዘገበ የጥሬ ገንዘብ ሽያጭ: ${s.sellerRevenue} ብር (${s.sellerCount}) — በገቢ አይቆጠርም
+📦 የሻጭ ሽያጭ በአይነት: ${sellerPackageBreakdown}
+
+${poolLines}
+"""
+          assert old in index, 'Amharic admin sales block not found'
+          index = index.replace(old, new, 1)
+
+          old = """Direct: ${s.directRevenue} ETB (${s.directCount})
+Seller-entered sales: ${s.sellerRevenue} ETB (${s.sellerCount})
+
+${poolLines}
+"""
+          new = """Direct revenue: ${s.directRevenue} ETB (${s.directCount})
+Seller cash sales recorded: ${s.sellerRevenue} ETB (${s.sellerCount}) — not included in Revenue
+Seller sales by type: ${sellerPackageBreakdown}
+
+${poolLines}
+"""
+          assert old in index, 'English admin sales block not found'
+          index = index.replace(old, new, 1)
+          index_path.write_text(index)
+
+          test_path = Path('bot/backend/tests/sellerCashAccounting.test.js')
+          test_path.write_text("""import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { TicketDatabase } from '../src/db.js';
+
+function makeDb() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'finotebirhan-cash-'));
+  const db = new TicketDatabase(path.join(dir, 'test.sqlite'));
+  return { db, dir };
+}
+
+function seedPaidSales(db) {
+  const now = new Date().toISOString();
+  db.db.prepare(`INSERT INTO users(telegram_id,full_name,phone,registration_state,created_at,updated_at) VALUES(?,?,?,?,?,?)`)
+    .run(1, 'Test Seller', '+251911111111', 'complete', now, now);
+  db.db.prepare(`INSERT INTO sellers(telegram_id,display_name,phone,payment_provider,account_name,account_number,seller_code,status,created_at,approved_at,approved_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(1, 'Test Seller', '+251911111111', 'cash', 'Test Seller', 'cash', 'SELLER1', 'approved', now, now, 1);
+  const sellerId = db.db.prepare('SELECT id FROM sellers WHERE telegram_id=1').get().id;
+  const insert = db.db.prepare(`INSERT INTO purchases(id,buyer_telegram_id,buyer_name,buyer_phone,package_type,amount_etb,seller_id,source,status,reserved_until,created_at,paid_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`);
+  insert.run('DIRECT-200', 1, 'Buyer', '+251911111111', '200', 200, null, 'direct', 'paid', now, now, now);
+  insert.run('SELL-BUNDLE', 1, 'Buyer', '+251911111111', 'bundle', 300, sellerId, 'seller', 'paid', now, now, now);
+  insert.run('SELL-100-A', 1, 'Buyer', '+251911111111', '100', 100, sellerId, 'seller', 'paid', now, now, now);
+  insert.run('SELL-100-B', 1, 'Buyer', '+251911111111', '100', 100, sellerId, 'seller', 'paid', now, now, now);
+  insert.run('SELL-50', 1, 'Buyer', '+251911111111', '50', 50, sellerId, 'seller', 'paid', now, now, now);
+  return sellerId;
+}
+
+test('seller cash sales do not inflate FinoteBirhan revenue and are broken down by package', () => {
+  const { db, dir } = makeDb();
+  try {
+    const sellerId = seedPaidSales(db);
+    const dashboard = db.dashboardStats();
+    assert.equal(dashboard.revenue, 200);
+    assert.equal(dashboard.directRevenue, 200);
+    assert.equal(dashboard.sellerRevenue, 550);
+    assert.equal(dashboard.sellerCount, 4);
+    assert.deepEqual(
+      dashboard.sellerPackages.map((row) => [row.package_type, row.sales, row.amount]).sort(),
+      [['100', 2, 200], ['50', 1, 50], ['bundle', 1, 300]].sort()
+    );
+
+    const seller = db.sellerStats(sellerId);
+    assert.equal(seller.revenue, 550);
+    assert.deepEqual(
+      seller.packages.map((row) => [row.package_type, row.sales, row.amount]).sort(),
+      [['100', 2, 200], ['50', 1, 50], ['bundle', 1, 300]].sort()
+    );
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+""")
+          PY
+
+      - name: Install dependencies
+        working-directory: bot/backend
+        run: npm install --no-audit --no-fund
+
+      - name: Run tests
+        working-directory: bot/backend
+        run: npm test
+
+      - name: Commit tested fix
+        shell: bash
+        run: |
+          rm .github/workflows/apply-seller-cash-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot/backend/src/db.js bot/backend/src/index.js bot/backend/tests/sellerCashAccounting.test.js .github/workflows/apply-seller-cash-fix.yml
+          git commit -m "fix: separate seller cash from platform revenue"
+          git push origin HEAD:fix/seller-cash-accounting
