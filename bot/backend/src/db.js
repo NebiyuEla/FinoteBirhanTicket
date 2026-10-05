@@ -13,7 +13,7 @@ try {
 import { addMinutesIso, amountForPackage, formatNumber, normalizeNameForCompare, normalizePhone, nowIso, packagePools, randomToken, sha256, shortCode } from './utils.js';
 
 export class TicketDatabase {
-  constructor(dbPath, { reservationMinutes = 10, manualReviewMinutes = 30 } = {}) {
+  constructor(dbPath, { reservationMinutes = 30, manualReviewMinutes = 30 } = {}) {
     this.dbPath = dbPath;
     this.reservationMinutes = reservationMinutes;
     this.manualReviewMinutes = manualReviewMinutes;
@@ -1168,7 +1168,8 @@ export class TicketDatabase {
       users,
       paidCount: paid.c,
       grossSalesValue: paid.revenue,
-      revenue: platform.revenue,
+      revenue: paid.revenue,
+      platformRevenue: platform.revenue,
       platformPaidCount: platform.c,
       directCount: direct.c,
       directRevenue: direct.revenue,

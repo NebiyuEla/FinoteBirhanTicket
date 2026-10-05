@@ -1257,7 +1257,7 @@ Build: v${BOT_BUILD}
 🚨 ሪከቨሪ የሚፈልጉ: ${recovery.attention}
 🧾 ትኬት ሻጮች: ${s.sellers}
 
-🏦 ፍኖተ ብርሃን የተቀበለው: ${s.revenue} ብር (${s.platformPaidCount})
+🏦 ፍኖተ ብርሃን የተቀበለው: ${s.platformRevenue} ብር (${s.platformPaidCount})
 💵 በሻጭ/ጥሬ ገንዘብ የተሰበሰበ: ${s.sellerCashRevenue} ብር (${s.sellerCashCount}) — በገቢ አይቆጠርም
 📦 የሻጭ ጥሬ ገንዘብ ሽያጭ በጥቅል: ${sellerCashBreakdown}
 
@@ -1273,7 +1273,7 @@ Customers: ${s.users}
 Recovery attention: ${recovery.attention}
 Ticket sellers: ${s.sellers}
 
-Received by FinoteBirhan: ${s.revenue} ETB (${s.platformPaidCount})
+Received by FinoteBirhan: ${s.platformRevenue} ETB (${s.platformPaidCount})
 Seller/cash collected: ${s.sellerCashRevenue} ETB (${s.sellerCashCount}) — excluded from Revenue
 Seller cash sales by package: ${sellerCashBreakdown}
 

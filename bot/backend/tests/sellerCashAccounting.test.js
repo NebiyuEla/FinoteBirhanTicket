@@ -25,7 +25,7 @@ function insertPaid(db, { id, packageType, amount, sellerId = null, source = 'di
   );
 }
 
-test('seller-collected cash is excluded from platform Revenue and counted by package', () => {
+test('Revenue matches all paid ticket sales while seller cash stays separately visible', () => {
   const { db, dir, seller } = makeDb();
   try {
     insertPaid(db, { id: 'DIRECT-200', packageType: '200', amount: 200 });
@@ -37,7 +37,8 @@ test('seller-collected cash is excluded from platform Revenue and counted by pac
 
     const dashboard = db.dashboardStats();
     assert.equal(dashboard.grossSalesValue, 950);
-    assert.equal(dashboard.revenue, 400);
+    assert.equal(dashboard.revenue, 950);
+    assert.equal(dashboard.platformRevenue, 400);
     assert.equal(dashboard.platformPaidCount, 2);
     assert.equal(dashboard.sellerCashRevenue, 550);
     assert.equal(dashboard.sellerCashCount, 4);
@@ -57,6 +58,17 @@ test('seller-collected cash is excluded from platform Revenue and counted by pac
       sellerStats.packages.map((row) => [row.package_type, row.sales, row.amount]).sort(),
       [['100', 2, 200], ['200', 1, 200], ['50', 1, 50], ['bundle', 1, 300]].sort()
     );
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+
+test('default ticket reservation timeout is 30 minutes', () => {
+  const { db, dir } = makeDb();
+  try {
+    assert.equal(db.reservationMinutes, 30);
   } finally {
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
