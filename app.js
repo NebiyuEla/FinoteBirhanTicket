@@ -17,6 +17,8 @@
   const mode = params.get('mode') === 'seller' ? 'seller' : 'buyer';
   const sellerName = params.get('seller') || '';
   const sellerPayAvailable = false;
+  const snapshotAt = Number(params.get('at') || 0);
+  const SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
   let lang = normalizeLang(params.get('lang') || localStorage.getItem('finote_lang') || 'am');
 
   const prizeNames = {
@@ -102,7 +104,7 @@
   loadTicketImages();
   applyLanguage();
 
-  if (!session || !tg?.sendData) show('error');
+  if (!session || !tg?.sendData || !snapshotIsFresh()) show('error');
   else show(mode === 'seller' ? 'sellerCustomer' : 'ticket');
 
   document.getElementById('sellerContinue').addEventListener('click', () => {
@@ -129,6 +131,7 @@
   }));
 
   ticketGrid.addEventListener('click', (event) => {
+    if (!snapshotIsFresh()) return show('error');
     const card = event.target.closest('[data-ticket]');
     if (!card) return;
     if (mode === 'seller' && (!state.buyerName || !state.buyerPhone)) return show('sellerCustomer');
@@ -162,6 +165,7 @@
   document.getElementById('backBtn').addEventListener('click', () => show('ticket'));
 
   confirmBtn.addEventListener('click', () => {
+    if (!snapshotIsFresh()) return show('error');
     if (!complete()) return;
     const payload = { type: mode === 'seller' ? 'seller_sale_selection' : 'ticket_selection', session, package:state.ticket, numbers:{}, lang };
     if (mode === 'seller') {
@@ -270,10 +274,9 @@
       button.className = 'num';
       button.dataset.number = String(number);
       button.textContent = formatNumber(number);
-      if (unavailable[state.activePool].has(number)) {
-        button.disabled = true;
-        button.classList.add('taken');
-      } else if (state.numbers[state.activePool] === number) button.classList.add('selected');
+      // Reserved and sold numbers are never shown as selectable inventory.
+      if (unavailable[state.activePool].has(number)) continue;
+      if (state.numbers[state.activePool] === number) button.classList.add('selected');
       fragment.appendChild(button);
     }
     numberGrid.replaceChildren(fragment);
@@ -286,6 +289,12 @@
     }
     confirmBtn.disabled = !complete();
     if (confirmBtn.textContent !== T[lang].sending) confirmBtn.textContent = T[lang].reserveContinue;
+  }
+
+  function snapshotIsFresh() {
+    if (!Number.isFinite(snapshotAt) || snapshotAt <= 0) return false;
+    const age = Date.now() - snapshotAt;
+    return age >= -30_000 && age <= SNAPSHOT_MAX_AGE_MS;
   }
 
   function alertMini(text) { if (tg?.showAlert) tg.showAlert(text); else window.alert(text); }
