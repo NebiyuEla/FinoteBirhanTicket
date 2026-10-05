@@ -16,7 +16,7 @@
   const session = params.get('s') || '';
   const mode = params.get('mode') === 'seller' ? 'seller' : 'buyer';
   const sellerName = params.get('seller') || '';
-  const sellerPayAvailable = params.get('sellerpay') === '1';
+  const sellerPayAvailable = false;
   let lang = normalizeLang(params.get('lang') || localStorage.getItem('finote_lang') || 'am');
 
   const prizeNames = {
@@ -40,11 +40,11 @@
       birr:'ብር', tapToChoose:'ቁጥር ለመምረጥ ይጫኑ', chooseNumber:'ቁጥር ይምረጡ', back:'ተመለስ',
       available:'ያለ', selected:'የተመረጠ', taken:'የተወሰደ', reserveContinue:'ያስይዙ እና ይቀጥሉ',
       newSale:'አዲስ ትኬት ሽያጭ', buyerInfo:'የገዢውን መረጃ ያስገቡ', buyerFullName:'የገዢው ሙሉ ስም',
-      phone:'ስልክ ቁጥር', paymentDestination:'ክፍያ የት ይገባ?', finoteBirhan:'ፍኖተ ብርሃን', sellerAccount:'የእኔ አካውንት',
+      phone:'ስልክ ቁጥር', paymentDestination:'የክፍያ መድረሻ', finoteBirhan:'ፍኖተ ብርሃን አካውንት', sellerAccount:'አይገኝም',
       chooseTicketArrow:'ትኬት ይምረጡ →', edit:'ቀይር', expiredTitle:'ሊንኩ አልፎታል',
       expiredText:'ወደ ቦቱ ይመለሱ እና “ትኬት ይግዙ” በመጫን እንደገና ይክፈቱ።',
-      sellerPayNote:'ገዢው ወደ እርስዎ አካውንት ይከፍላል። ገንዘቡን ካዩ በኋላ “ተሽጧል” ይጫኑ።',
-      finotePayNote:'ገዢው ወደ ፍኖተ ብርሃን አካውንት ይከፍላል። ክፍያውን ካረጋገጡ በኋላ “ተሽጧል” ይጫኑ።',
+      sellerPayNote:'የሻጭ የግል አካውንት ለአዲስ ሽያጭ አይጠቀምም። ሁሉም ሽያጭ ወደ ፍኖተ ብርሃን ይመዘገባል።',
+      finotePayNote:'ሁሉም የሻጭ ሽያጭ ወደ ፍኖተ ብርሃን አካውንት ይመዘገባል። ገዢው ከከፈለ በኋላ ትኬቱ SOLD ከመሆኑ በፊት የፍኖተ ብርሃን አስተዳዳሪ ማረጋገጥ አለበት።',
       chooseOne:'ከ001–200 አንድ ያልተወሰደ ቁጥር ይምረጡ።',
       chooseBundle:'ከ200፣ 100 እና 50 ብር ዕጣ እያንዳንዱ አንድ ቁጥር ይምረጡ።',
       chooseNumberShort:'ቁጥር ይምረጡ', sending:'በመላክ ላይ…', sellerMode:'የትኬት ሻጭ',
@@ -57,11 +57,11 @@
       birr:'ETB', tapToChoose:'Tap to choose a number', chooseNumber:'Choose a number', back:'Back',
       available:'Available', selected:'Selected', taken:'Taken', reserveContinue:'Reserve & continue',
       newSale:'New ticket sale', buyerInfo:'Enter the buyer information', buyerFullName:'Buyer full name', phone:'Phone number',
-      paymentDestination:'Where will the buyer pay?', finoteBirhan:'FinoteBirhan', sellerAccount:'My account',
+      paymentDestination:'Payment destination', finoteBirhan:'FinoteBirhan account', sellerAccount:'Unavailable',
       chooseTicketArrow:'Choose ticket →', edit:'Edit', expiredTitle:'This link expired',
       expiredText:'Return to the bot and tap “Buy Ticket” to open a fresh page.',
-      sellerPayNote:'The buyer pays your account. After you see the money, tap SOLD.',
-      finotePayNote:'The buyer pays the FinoteBirhan account. After payment is confirmed, tap SOLD.',
+      sellerPayNote:'Seller-owned payment destinations are disabled. All sales settle to FinoteBirhan.',
+      finotePayNote:'All seller sales settle to the FinoteBirhan account. After the buyer pays, FinoteBirhan admin approval is required before the ticket becomes SOLD.',
       chooseOne:'Choose one available number from 001–200.', chooseBundle:'Choose one number in each 200, 100 and 50 ETB draw.',
       chooseNumberShort:'Choose a number', sending:'Sending…', sellerMode:'Ticket Seller',
       sellerUnconfigured:'My account · Not configured', fullNamePlaceholder:'Full name'
@@ -97,7 +97,8 @@
   }, { passive:false });
 
   document.querySelectorAll('[data-lang-control],#langToggle').forEach((button) => button.addEventListener('click', toggleLanguage));
-  paySeller.disabled = !sellerPayAvailable;
+  paySeller.disabled = true;
+  paySeller.hidden = true;
   loadTicketImages();
   applyLanguage();
 
@@ -166,7 +167,7 @@
     if (mode === 'seller') {
       payload.buyer_name = state.buyerName;
       payload.buyer_phone = state.buyerPhone;
-      payload.payment_target = state.paymentTarget;
+      payload.payment_target = 'finote';
     }
     const pools = state.ticket === 'bundle' ? [200,100,50] : [Number(state.ticket)];
     for (const pool of pools) payload.numbers[String(pool)] = state.numbers[pool];

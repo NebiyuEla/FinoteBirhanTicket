@@ -72,7 +72,9 @@ test('ticket seller can manually sell a ticket and buyer is linked by phone', ()
   });
   assert.equal(purchase.source, 'seller');
   assert.equal(purchase.linked_telegram_id, 1);
-  db.confirmPurchase(purchase.id, 3, { note: 'manual SOLD' });
+  assert.throws(() => db.confirmPurchase(purchase.id, 3, { note: 'manual SOLD' }), /admin payment approval/i);
+  db.addAdmin(999);
+  db.confirmPurchase(purchase.id, 999, { note: 'approved by admin' });
   const tickets = db.ticketsForUser(1);
   assert.equal(tickets.length, 1);
   assert.equal(tickets[0].number, 44);
@@ -106,7 +108,7 @@ test('admin force clear resets operational data but preserves admins and setting
     sellerTelegramId: 3, buyerName: 'Test Buyer', buyerPhone: '0911111111', packageType: '100',
     selectedNumbers: { 100: 44 }, paymentTarget: 'finote'
   });
-  db.confirmPurchase(purchase.id, seller.telegram_id, { note: 'manual SOLD' });
+  db.confirmPurchase(purchase.id, 999, { note: 'approved by admin' });
   db.setSetting('draw_at', '2026-10-01T18:00:00+03:00', 999);
 
   const before = db.forceClearOperationalData(999);
@@ -234,7 +236,7 @@ test('disabling the default account promotes another active account and force cl
   close(db, dir);
 });
 
-test('seller-owned payment destination is snapshotted independently from FinoteBirhan accounts', () => {
+test('seller sales always settle to FinoteBirhan even if seller destination is requested', () => {
   const { db, dir } = makeDb();
   db.ensureUser(3); db.setUserName(3, 'Seller One'); db.setUserPhone(3, '+251933333333');
   const seller = db.activateSellerRole(3, 999).seller;
@@ -248,10 +250,11 @@ test('seller-owned payment destination is snapshotted independently from FinoteB
     paymentTarget: 'seller'
   });
   assert.equal(purchase.seller_id, seller.id);
-  assert.equal(purchase.payment_target, 'seller');
-  assert.equal(purchase.payment_provider, 'telebirr');
-  assert.equal(purchase.payment_account_name, 'Seller One');
-  assert.equal(purchase.payment_account_number, '0933333333');
+  assert.equal(purchase.payment_target, 'finote');
+  assert.equal(purchase.payment_provider, null);
+  assert.equal(purchase.payment_account_name, null);
+  assert.equal(purchase.payment_account_number, null);
+  assert.throws(() => db.confirmPurchase(purchase.id, 3, { note: 'seller tried to self-confirm' }), /admin payment approval/i);
   close(db, dir);
 });
 

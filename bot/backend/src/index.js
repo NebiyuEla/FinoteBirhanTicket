@@ -10,7 +10,7 @@ import {
 
 assertRuntimeConfig();
 
-const BOT_BUILD = '1.3.5';
+const BOT_BUILD = '1.3.6';
 
 const db = new TicketDatabase(config.dbPath, {
   reservationMinutes: config.reservationMinutes,
@@ -413,7 +413,7 @@ async function sendMainMenu(chatId, intro = '') {
   rows.push([{ text: am ? '🌐 ቋንቋ' : '🌐 Language' }]);
   if (seller?.status === 'approved') {
     if (config.miniAppUrl) rows.push([{ text: am ? '🧾 ትኬት ይሽጡ' : '🧾 Sell Tickets', web_app: { url: buildSellerMiniAppUrl(seller) } }]);
-    rows.push([{ text: am ? '📈 የሽያጭ ሪፖርት' : '📈 Seller Stats' }, { text: am ? '💳 የሻጭ አካውንት' : '💳 Seller Account' }]);
+    rows.push([{ text: am ? '📈 የሽያጭ ሪፖርት' : '📈 Seller Stats' }]);
   }
   if (db.isAdmin(chatId)) rows.push([{ text: am ? '🛠 አስተዳዳሪ' : '🛠 Admin' }]);
 
@@ -604,8 +604,8 @@ ${provider}
 ${accountName}
 ${accountNumber}${linked}
 
-Only tap SOLD after the buyer has paid.`,
-    { reply_markup: inlineKeyboard([[{ text: am ? '✅ ተሽጧል' : '✅ SOLD', callback_data: `seller_ok:${purchase.id}` }, { text: am ? '❌ ሽያጩን ሰርዝ' : '❌ Cancel sale', callback_data: `seller_no:${purchase.id}` }]]) }
+For cash, first settle the money to FinoteBirhan. Tap Buyer paid only after payment is complete; an admin must approve before the ticket becomes SOLD.`,
+    { reply_markup: inlineKeyboard([[{ text: am ? '✅ ገዢው ከፍሏል' : '✅ Buyer paid', callback_data: `seller_ok:${purchase.id}` }, { text: am ? '❌ ሽያጩን ሰርዝ' : '❌ Cancel sale', callback_data: `seller_no:${purchase.id}` }]]) }
   );
 }
 
@@ -679,7 +679,7 @@ async function handleStateMessage(message, state) {
       await bot.sendMessage(telegramId, `✅ Ticket Seller activated: #${result.seller.id} ${result.seller.display_name}.`);
       await safeSend(sellerTelegramId, `✅ Ticket Seller access is active.
 
-Open /start. You will now see 🧾 Sell Tickets and 📈 Seller Stats. You can optionally add your own payment account from 💳 Seller Account.`);
+Open /start. You will now see 🧾 Sell Tickets and 📈 Seller Stats. All seller sales settle to the FinoteBirhan account and require admin payment approval.`);
     } else {
       await bot.sendMessage(telegramId, `✅ Telegram ID ${sellerTelegramId} added as a Ticket Seller. They must finish normal bot registration first; access will activate automatically.`);
       await safeSend(sellerTelegramId, `✅ You were added as a FinoteBirhan Ticket Seller.
@@ -719,8 +719,8 @@ async function handlePaymentProof(message, purchase) {
   db.clearUserState(telegramId);
 
   if (updated.source === 'seller') {
-    await bot.sendMessage(telegramId, tr(telegramId, `⏳ የክፍያ ማስረጃው ለ${updated.seller.display_name} ተልኳል። ክፍያውን ሲያረጋግጥ ትኬትዎ ይወጣል።`, `⏳ Payment proof sent to ${updated.seller.display_name}. Your ticket will be issued after the seller confirms receiving the payment.`));
-    await notifySellerReview(updated, message);
+    await bot.sendMessage(telegramId, tr(telegramId, '⏳ የክፍያ ማስረጃው ለፍኖተ ብርሃን አስተዳዳሪ ተልኳል። ክፍያው እስኪረጋገጥ ድረስ ትኬቱ SOLD አይሆንም።', '⏳ Payment proof sent to a FinoteBirhan administrator. The ticket will not become SOLD until the payment is approved.'));
+    await notifyAdminsOfReview(updated, message);
     return sendMainMenu(telegramId);
   }
 
@@ -993,13 +993,11 @@ ${seller.phone}
 👥 ገዢዎች: ${stats.customers}
 ✅ የተከፈሉ ሽያጮች: ${stats.paidCount}
 🎟 የወጡ ትኬቶች: ${stats.tickets}
-💵 በሻጭ/ጥሬ ገንዘብ የተሰበሰበ: ${stats.sellerCashRevenue} ብር (${stats.sellerCashCount})
-🏦 ወደ ፍኖተ ብርሃን የተከፈለ: ${stats.finotePaidRevenue} ብር (${stats.finotePaidCount})
+💰 የተሸጡ ትኬቶች ዋጋ: ${stats.salesValue} ብር
 📦 ሽያጭ በጥቅል: ${packageBreakdown}
 ⏳ በመጠባበቅ ላይ: ${stats.pending}
 
-💳 የእርስዎ የክፍያ አካውንት
-${account}
+🏦 ሁሉም አዲስ ሽያጮች ወደ ፍኖተ ብርሃን አካውንት ይመዘገባሉ።
 
 🧾 የቅርብ ሽያጮች
 ${recentText}`
@@ -1011,17 +1009,15 @@ ${seller.phone}
 Buyers: ${stats.customers}
 Sales: ${stats.paidCount}
 Tickets issued: ${stats.tickets}
-Seller/cash collected: ${stats.sellerCashRevenue} ETB (${stats.sellerCashCount})
-Paid to FinoteBirhan: ${stats.finotePaidRevenue} ETB (${stats.finotePaidCount})
+Sales value: ${stats.salesValue} ETB
 Sales by package: ${packageBreakdown}
 Pending: ${stats.pending}
 
-Your payment account
-${account}
+All new seller sales settle to the FinoteBirhan account and require admin approval.
 
 Recent sales
 ${recentText}`,
-    { reply_markup: inlineKeyboard([[{ text: am ? '💳 የክፍያ አካውንት ቀይር' : '💳 Update payment account', callback_data: 'seller_account' }],[{ text: am ? '🔄 አድስ' : '🔄 Refresh', callback_data: 'seller_panel' }]]) }
+    { reply_markup: inlineKeyboard([[{ text: am ? '🔄 አድስ' : '🔄 Refresh', callback_data: 'seller_panel' }]]) }
   );
   await sendMainMenu(telegramId);
 }
@@ -1099,6 +1095,13 @@ async function handleCallback(query) {
       return bot.answerCallbackQuery(query.id, 'Not allowed.', true).catch(() => {});
     }
     if (data.startsWith('seller_ok:')) {
+      const numbers = purchase.numbers.map((n) => `${n.pool} ETB #${formatNumber(n.number)}`).join(' · ');
+      await notifyAdmins(`💳 SELLER SALE PAYMENT REVIEW\n\nSeller: ${seller.display_name}\nBuyer: ${purchase.buyer_name}\nPhone: ${purchase.buyer_phone}\nPackage: ${purchase.package_type}\nAmount: ${purchase.amount_etb} ETB\nNumbers: ${numbers || '-'}\n\nSeller says the buyer paid. Confirm only after FinoteBirhan has actually received/verified the money.`, inlineKeyboard([[
+        { text: '✅ Approve payment', callback_data: `admin_pay_ok:${purchase.id}` },
+        { text: '❌ Reject', callback_data: `admin_pay_no:${purchase.id}` }
+      ]]));
+      await bot.sendMessage(telegramId, tr(telegramId, '⏳ ክፍያው ለአስተዳዳሪ ማረጋገጫ ተልኳል። እስኪፈቀድ ድረስ ትኬቱ SOLD አይሆንም።', '⏳ Sent for FinoteBirhan admin payment approval. The ticket will not become SOLD until approved.'));
+      return;
       try {
         const paid = db.confirmPurchase(purchaseId, telegramId, { note: `Marked SOLD by ticket seller ${seller.display_name}` });
         await bot.sendMessage(telegramId, tr(telegramId, `✅ ተሽጧል — ${paid.buyer_name}\n${paid.buyer_phone}\n\nዲጂታል ትኬቱ ከታች ነው። ለገዢው ማስተላለፍ ይችላሉ።`, `✅ SOLD — ${paid.buyer_name}\n${paid.buyer_phone}\n\nThe digital ticket is below. You can forward it to the buyer.`));
@@ -1245,21 +1248,22 @@ async function showAdminDashboard(telegramId) {
   if (!db.isAdmin(telegramId)) return bot.sendMessage(telegramId, am ? 'የአስተዳዳሪ ፈቃድ ያስፈልጋል።' : 'Admin access required.');
   const s = db.dashboardStats();
   const recovery = db.recoveryStats();
-  const sellerCashBreakdown = formatPackageBreakdown(s.sellerCashPackages, am);
+  const salesBreakdown = formatPackageBreakdown(s.paidPackages, am);
   const poolLines = s.pools.map((p) => am ? `${p.pool} ብር: ${p.sold}/200 ተሽጧል · ${p.reserved} ተይዟል` : `${p.pool} ETB: ${p.sold}/200 sold · ${p.reserved} reserved`).join('\n');
   await bot.sendMessage(telegramId, am
     ? `🛠 ፍኖተ ብርሃን አስተዳዳሪ
 Build: v${BOT_BUILD}
 
-💰 ገቢ: ${s.revenue} ብር
+💰 የተሸጡ ትኬቶች ጠቅላላ ዋጋ: ${s.revenue} ብር
 ✅ የተከፈሉ ግዢዎች: ${s.paidCount}
 👥 ተጠቃሚዎች: ${s.users}
 🚨 ሪከቨሪ የሚፈልጉ: ${recovery.attention}
 🧾 ትኬት ሻጮች: ${s.sellers}
 
-🏦 ፍኖተ ብርሃን የተቀበለው: ${s.platformRevenue} ብር (${s.platformPaidCount})
-💵 በሻጭ/ጥሬ ገንዘብ የተሰበሰበ: ${s.sellerCashRevenue} ብር (${s.sellerCashCount}) — በገቢ አይቆጠርም
-📦 የሻጭ ጥሬ ገንዘብ ሽያጭ በጥቅል: ${sellerCashBreakdown}
+🌐 በቦት በቀጥታ የተሸጠ: ${s.directRevenue} ብር (${s.directCount})
+🧾 በሻጮች የተመዘገበ: ${s.sellerRevenue} ብር (${s.sellerCount})
+📦 ሽያጭ በጥቅል: ${salesBreakdown}
+ℹ️ ገቢው የሚቆጠረው በጥቅል ዋጋ ነው፤ Bundle = 300 ብር። የ200/100/50 ዕጣ ቁጥሮችን ደምሮ ገቢ አይቆጠርም።
 
 ${poolLines}
 
@@ -1267,15 +1271,16 @@ ${poolLines}
     : `🛠 FinoteBirhan Admin
 Build: v${BOT_BUILD}
 
-Revenue: ${s.revenue} ETB
+Ticket sales value: ${s.revenue} ETB
 Paid purchases: ${s.paidCount}
 Customers: ${s.users}
 Recovery attention: ${recovery.attention}
 Ticket sellers: ${s.sellers}
 
-Received by FinoteBirhan: ${s.platformRevenue} ETB (${s.platformPaidCount})
-Seller/cash collected: ${s.sellerCashRevenue} ETB (${s.sellerCashCount}) — excluded from Revenue
-Seller cash sales by package: ${sellerCashBreakdown}
+Direct bot sales: ${s.directRevenue} ETB (${s.directCount})
+Seller-entered sales: ${s.sellerRevenue} ETB (${s.sellerCount})
+Sales by package: ${salesBreakdown}
+Revenue uses the package price only (Bundle = 300 ETB). Draw/pool face values are inventory, not revenue.
 
 ${poolLines}
 
@@ -1409,7 +1414,7 @@ Phone: ${seller.phone}
 ` +
       `Buyers: ${seller.customers} · Sales: ${seller.paid_count} · Tickets: ${seller.tickets_issued}
 ` +
-      `Collected: ${seller.revenue} ETB · Pending: ${seller.pending_count}`
+      `Sales value: ${seller.revenue} ETB · Pending: ${seller.pending_count}`
     ).join('\n');
     await bot.sendMessage(telegramId, `Active Ticket Sellers
 
