@@ -12,9 +12,13 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: live-miniapp-availability-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   apply-test-commit:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
