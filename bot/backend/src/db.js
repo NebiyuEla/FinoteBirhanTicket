@@ -744,10 +744,16 @@ export class TicketDatabase {
     return token;
   }
 
-  consumeWebSession(token, telegramId) {
+  getUsableWebSession(token, telegramId) {
     const row = this.db.prepare('SELECT * FROM web_sessions WHERE token=?').get(token);
     if (!row || row.telegram_id !== telegramId || row.used_at || row.expires_at < nowIso()) return null;
-    this.db.prepare('UPDATE web_sessions SET used_at=? WHERE token=?').run(nowIso(), token);
+    return row;
+  }
+
+  consumeWebSession(token, telegramId) {
+    const row = this.getUsableWebSession(token, telegramId);
+    if (!row) return null;
+    this.db.prepare('UPDATE web_sessions SET used_at=? WHERE token=? AND used_at IS NULL').run(nowIso(), token);
     return row;
   }
 

@@ -10,7 +10,7 @@ import {
 
 assertRuntimeConfig();
 
-const BOT_BUILD = '1.3.7';
+const BOT_BUILD = '1.3.8';
 
 const db = new TicketDatabase(config.dbPath, {
   reservationMinutes: config.reservationMinutes,
@@ -148,7 +148,8 @@ const MAIN_MENU_NAVIGATION = new Map([
   ['💳 የሻጭ አካውንት', 'seller_account'], ['💳 Seller Account', 'seller_account'],
   ['🌐 ቋንቋ', 'language'], ['🌐 Language', 'language'],
   ['🛠 አስተዳዳሪ', 'admin'], ['🛠 Admin', 'admin'],
-  ['🎟 ትኬት ይግዙ', 'buy'], ['🎟 Buy Ticket', 'buy']
+  ['🎟 ትኬት ይግዙ', 'buy'], ['🎟 Buy Ticket', 'buy'],
+  ['🧾 ትኬት ይሽጡ', 'sell'], ['🧾 Sell Tickets', 'sell']
 ].map(([label, action]) => [normalizeNavigationLabel(label), action]));
 
 function isMainMenuNavigation(text) {
@@ -169,13 +170,8 @@ async function handleMainMenuNavigation(telegramId, text) {
   else if (action === 'seller_account') await startSellerAccountSetup(telegramId);
   else if (action === 'language') await showLanguagePicker(telegramId);
   else if (action === 'admin') await showAdminDashboard(telegramId);
-  else if (action === 'buy') {
-    if (!config.miniAppUrl) {
-      await bot.sendMessage(telegramId, tr(telegramId, 'የMini App ሊንክ አልተዘጋጀም።', 'The Mini App URL is not configured yet.'));
-    } else {
-      await sendMainMenu(telegramId);
-    }
-  }
+  else if (action === 'buy') await sendFreshMiniAppLauncher(telegramId, 'buyer');
+  else if (action === 'sell') await sendFreshMiniAppLauncher(telegramId, 'seller');
   return true;
 }
 
@@ -407,12 +403,13 @@ async function sendMainMenu(chatId, intro = '') {
   const am = langOf(chatId) !== 'en';
   const rows = [];
   const buyText = am ? '🎟 ትኬት ይግዙ' : '🎟 Buy Ticket';
-  if (config.miniAppUrl) rows.push([{ text: buyText, web_app: { url: buildMiniAppUrl(chatId) } }]);
-  else rows.push([{ text: buyText }]);
+  // Persistent keyboard buttons are plain text so every press creates a fresh
+  // availability snapshot from the live database instead of reopening a stale URL.
+  rows.push([{ text: buyText }]);
   rows.push([{ text: am ? '🎫 የእኔ ትኬቶች' : '🎫 My Tickets' }, { text: am ? '🏆 ውጤት' : '🏆 Results' }]);
   rows.push([{ text: am ? '🌐 ቋንቋ' : '🌐 Language' }]);
   if (seller?.status === 'approved') {
-    if (config.miniAppUrl) rows.push([{ text: am ? '🧾 ትኬት ይሽጡ' : '🧾 Sell Tickets', web_app: { url: buildSellerMiniAppUrl(seller) } }]);
+    rows.push([{ text: am ? '🧾 ትኬት ይሽጡ' : '🧾 Sell Tickets' }]);
     rows.push([{ text: am ? '📈 የሽያጭ ሪፖርት' : '📈 Seller Stats' }]);
   }
   if (db.isAdmin(chatId)) rows.push([{ text: am ? '🛠 አስተዳዳሪ' : '🛠 Admin' }]);
@@ -422,6 +419,31 @@ async function sendMainMenu(chatId, intro = '') {
 ` : ''}${am ? '👇 ይምረጡ' : '👇 Choose'}`, {
     reply_markup: replyKeyboard(rows, { placeholder: am ? 'ይምረጡ' : 'Choose' })
   });
+}
+
+async function sendFreshMiniAppLauncher(telegramId, type = 'buyer') {
+  if (!config.miniAppUrl) {
+    return bot.sendMessage(telegramId, tr(telegramId, 'የMini App ሊንክ አልተዘጋጀም።', 'The Mini App URL is not configured yet.'));
+  }
+  const am = langOf(telegramId) !== 'en';
+  let url;
+  let buttonText;
+  if (type === 'seller') {
+    const seller = db.getSellerByTelegram(telegramId);
+    if (!seller || seller.status !== 'approved') {
+      return bot.sendMessage(telegramId, am ? 'የትኬት ሻጭ ፈቃድዎ ንቁ አይደለም።' : 'Ticket Seller access is not active.');
+    }
+    url = buildSellerMiniAppUrl(seller);
+    buttonText = am ? '🧾 ትኬቶችን ክፈት' : '🧾 Open live tickets';
+  } else {
+    url = buildMiniAppUrl(telegramId);
+    buttonText = am ? '🎟 ትኬቶችን ክፈት' : '🎟 Open live tickets';
+  }
+  return bot.sendMessage(telegramId,
+    am ? '🔄 የሚታዩት ቁጥሮች ከአሁኑ ዳታ ተዘምነዋል። የተያዙ እና የተሸጡ ቁጥሮች አይታዩም።'
+       : '🔄 Availability is refreshed from the live database. Reserved and sold numbers are hidden.',
+    { reply_markup: inlineKeyboard([[{ text: buttonText, web_app: { url } }]]) }
+  );
 }
 
 function addMiniAppContext(url, telegramId) {
@@ -435,9 +457,10 @@ function addMiniAppContext(url, telegramId) {
 
 function buildMiniAppUrl(telegramId) {
   const url = new URL(config.miniAppUrl);
-  const session = db.createWebSession(telegramId, null);
+  const session = db.createWebSession(telegramId, null, 5);
   const availability = db.availability();
   url.searchParams.set('s', session);
+  url.searchParams.set('at', String(Date.now()));
   addMiniAppContext(url, telegramId);
   url.searchParams.set('a200', encodeUnavailableBitset(availability[200]));
   url.searchParams.set('a100', encodeUnavailableBitset(availability[100]));
@@ -447,9 +470,10 @@ function buildMiniAppUrl(telegramId) {
 
 function buildSellerMiniAppUrl(seller) {
   const url = new URL(config.miniAppUrl);
-  const session = db.createWebSession(seller.telegram_id, seller.id);
+  const session = db.createWebSession(seller.telegram_id, seller.id, 5);
   const availability = db.availability();
   url.searchParams.set('s', session);
+  url.searchParams.set('at', String(Date.now()));
   url.searchParams.set('mode', 'seller');
   url.searchParams.set('seller', seller.display_name.slice(0, 35));
   url.searchParams.set('sellerpay', db.sellerHasPaymentAccount(seller.id) ? '1' : '0');
@@ -468,10 +492,13 @@ async function handleWebAppData(message) {
     await bot.sendMessage(telegramId, tr(telegramId, 'የትኬት ምርጫው ትክክል አይደለም። እንደገና ይሞክሩ።', 'Invalid ticket selection. Please try again.'));
     return sendMainMenu(telegramId);
   }
-  const session = db.consumeWebSession(payload.session, telegramId);
+  const launcherType = payload.type === 'seller_sale_selection' ? 'seller' : 'buyer';
+  // Validate first, but consume only after a successful atomic reservation.
+  // A race for a just-taken number must not burn the session and turn the retry into "expired".
+  const session = db.getUsableWebSession(payload.session, telegramId);
   if (!session) {
-    await bot.sendMessage(telegramId, tr(telegramId, 'ይህ የትኬት ገጽ ጊዜው አልፏል። ከታች አዲስ ገጽ ይክፈቱ።', 'That ticket page expired. Open a fresh one below.'));
-    return sendMainMenu(telegramId);
+    await bot.sendMessage(telegramId, tr(telegramId, 'ይህ የትኬት ገጽ አርጅቷል። አዲስ የቀጥታ ዝርዝር ይክፈቱ።', 'That ticket page is stale. Open a fresh live list.'));
+    return sendFreshMiniAppLauncher(telegramId, launcherType);
   }
 
   try {
@@ -488,6 +515,7 @@ async function handleWebAppData(message) {
         selectedNumbers: payload.numbers,
         paymentTarget: payload.payment_target || 'finote'
       });
+      db.consumeWebSession(payload.session, telegramId);
       await beginSellerPaymentAccountSelection(telegramId, purchase);
       return;
     }
@@ -497,6 +525,7 @@ async function handleWebAppData(message) {
       packageType: payload.package,
       selectedNumbers: payload.numbers
     });
+    db.consumeWebSession(payload.session, telegramId);
     await beginDirectPaymentAccountSelection(telegramId, purchase);
   } catch (error) {
     await bot.sendMessage(telegramId, tr(telegramId, `⚠️ ${error.message}\n\nክፍያ አልተጠየቀም። እንደገና ይምረጡ።`, `⚠️ ${error.message}\n\nNo payment was requested. Please choose again.`));
@@ -1255,302 +1284,25 @@ async function showAdminDashboard(telegramId) {
   const s = db.dashboardStats();
   const recovery = db.recoveryStats();
   const salesBreakdown = formatPackageBreakdown(s.paidPackages, am);
-  const poolLines = s.pools.map((p) => am ? `${p.pool} ብር: ${p.sold}/200 ተሽጧል · ${p.reserved} ተይዟል` : `${p.pool} ETB: ${p.sold}/200 sold · ${p.reserved} reserved`).join('\n');
-  await bot.sendMessage(telegramId, am
-    ? `🛠 ፍኖተ ብርሃን አስተዳዳሪ
-Build: v${BOT_BUILD}
+  const classifiedValue = Number(s.confirmedRevenue || 0) + Number(s.unreconciledRevenue || 0) + Number(s.notReceivedRevenue || 0);
+  const classifiedCount = Number(s.confirmedReceiptCount || 0) + Number(s.unreconciledCount || 0) + Number(s.notReceivedCount || 0);
+  const accountingOk = classifiedValue === Number(s.salesValue || 0) && classifiedCount === Number(s.paidCount || 0);
+  const reservedNumbers = s.pools.reduce((sum, row) => sum + Number(row.reserved || 0), 0);
+  const availableNumbers = s.pools.reduce((sum, row) => sum + Number(row.available || 0), 0);
+  const statusLine = accountingOk ? (am ? '✅ የሂሳብ ማመሳሰያ: ትክክል' : '✅ Accounting check: BALANCED') : (am ? '🚨 የሂሳብ ማመሳሰያ: ልዩነት አለ' : '🚨 Accounting check: MISMATCH');
 
-💵 የተረጋገጠ የገባ ገንዘብ: ${s.revenue} ብር (${s.confirmedReceiptCount})
-🎟 የተሸጡ ትኬቶች ጠቅላላ ዋጋ: ${s.salesValue} ብር (${s.paidCount})
-⚠️ ገንዘቡ ያልተመሳከረ: ${s.unreconciledRevenue} ብር (${s.unreconciledCount})
-🚫 እንዳልገባ የተመዘገበ: ${s.notReceivedRevenue} ብር (${s.notReceivedCount})
-👥 ተጠቃሚዎች: ${s.users}
-🚨 ሪከቨሪ የሚፈልጉ: ${recovery.attention}
-🧾 ትኬት ሻጮች: ${s.sellers}
+  const text = am
+    ? `🛠 ፍኖተ ብርሃን አስተዳዳሪ · v${BOT_BUILD}\n\n💰 ገንዘብ\n✅ የተረጋገጠ የገባ: ${s.confirmedRevenue} ብር (${s.confirmedReceiptCount})\n🕓 ማረጋገጥ የሚፈልግ: ${s.unreconciledRevenue} ብር (${s.unreconciledCount})\n🚫 አልገባም የተባለ: ${s.notReceivedRevenue} ብር (${s.notReceivedCount})\n\n🎟 ትኬት ሽያጭ\nየተሸጡ ግዢዎች: ${s.paidCount} · ${s.salesValue} ብር\nበቦት: ${s.directCount} · ${s.directRevenue} ብር\nበሻጭ: ${s.sellerCount} · ${s.sellerRevenue} ብር\n${salesBreakdown}\n\n👥 ${s.users} ደንበኞች · ${s.sellers} ሻጮች\n⏳ ${reservedNumbers} ቁጥሮች ተይዘዋል · ${availableNumbers} ነፃ\n🚨 Recovery: ${recovery.attention}\n${statusLine}`
+    : `🛠 FinoteBirhan Admin · v${BOT_BUILD}\n\n💰 MONEY\n✅ Confirmed received: ${s.confirmedRevenue} ETB (${s.confirmedReceiptCount})\n🕓 Needs verification: ${s.unreconciledRevenue} ETB (${s.unreconciledCount})\n🚫 Marked not received: ${s.notReceivedRevenue} ETB (${s.notReceivedCount})\n\n🎟 TICKET SALES\nSold purchases: ${s.paidCount} · ${s.salesValue} ETB\nDirect bot: ${s.directCount} · ${s.directRevenue} ETB\nSeller-entered: ${s.sellerCount} · ${s.sellerRevenue} ETB\n${salesBreakdown}\n\n👥 ${s.users} customers · ${s.sellers} sellers\n⏳ ${reservedNumbers} numbers reserved · ${availableNumbers} available\n🚨 Recovery: ${recovery.attention}\n${statusLine}`;
 
-🌐 በቦት በቀጥታ የተሸጠ: ${s.directRevenue} ብር (${s.directCount})
-🧾 በሻጮች የተመዘገበ: ${s.sellerRevenue} ብር (${s.sellerCount})
-📦 ሽያጭ በጥቅል: ${salesBreakdown}
-ℹ️ SOLD ዋጋ በጥቅል ዋጋ ይቆጠራል፤ Bundle = 300 ብር። ነገር ግን ገቢ ውስጥ የሚገባው በVerify.et ወይም በአስተዳዳሪ በእውነት እንደደረሰ የተረጋገጠ ገንዘብ ብቻ ነው።
-
-${poolLines}
-
-🚨 ሪከቨሪው ያልተጠናቀቁ ግዢዎችን እና ባለፉት 7 ቀናት ጊዜያቸው ያለፈባቸውን ሪዘርቬሽኖች ያሳያል።`
-    : `🛠 FinoteBirhan Admin
-Build: v${BOT_BUILD}
-
-Confirmed money received: ${s.revenue} ETB (${s.confirmedReceiptCount})
-Sold ticket value: ${s.salesValue} ETB (${s.paidCount})
-Needs receipt reconciliation: ${s.unreconciledRevenue} ETB (${s.unreconciledCount})
-Marked not received: ${s.notReceivedRevenue} ETB (${s.notReceivedCount})
-Customers: ${s.users}
-Recovery attention: ${recovery.attention}
-Ticket sellers: ${s.sellers}
-
-Direct bot sales: ${s.directRevenue} ETB (${s.directCount})
-Seller-entered sales: ${s.sellerRevenue} ETB (${s.sellerCount})
-Sales by package: ${salesBreakdown}
-Sold value uses the package price only (Bundle = 300 ETB). Confirmed money received counts only receipts verified by Verify.et or an administrator; historical SOLD rows remain unreconciled until checked.
-
-${poolLines}
-
-🚨 Recovery includes all unresolved purchases plus reservations that expired during the last 7 days. Recent expired: ${recovery.recentExpired}.`,
-    { reply_markup: inlineKeyboard([
-      [{ text: am ? '💵 ገቢ አረጋግጥ' : '💵 Reconcile Revenue', callback_data: 'admin_revenue_reconcile' }],
-      [{ text: am ? '📊 ትኬት ቁጥሮች' : '📊 Pools', callback_data: 'admin_pools' }, { text: '🚨 Recovery', callback_data: 'admin_payments' }],
-      [{ text: am ? '🤝 ሻጮች' : '🤝 Sellers', callback_data: 'admin_sellers' }, { text: am ? '🏆 ዕጣ' : '🏆 Draw', callback_data: 'admin_draw' }],
-      [{ text: am ? '💳 የክፍያ አካውንቶች' : '💳 Transfer Accounts', callback_data: 'admin_payment_accounts' }],
-      [{ text: am ? '📤 ላክ' : '📤 Export', callback_data: 'admin_export' }, { text: am ? '⚙️ ትዕዛዞች' : '⚙️ Commands', callback_data: 'admin_help' }],
-      [{ text: am ? '🗑 ሁሉንም ዳታ አጥፋ' : '🗑 Force Clear Data', callback_data: 'admin_forceclear' }]
-    ]) }
-  );
-}
-
-async function showRevenueReconciliation(telegramId) {
-  if (!db.isAdmin(telegramId)) return bot.sendMessage(telegramId, 'Admin access required.');
-  const am = langOf(telegramId) !== 'en';
-  const s = db.dashboardStats();
-  const queue = db.unreconciledPaidPurchases(8);
-  await bot.sendMessage(telegramId, am
-    ? `💵 የገቢ ማረጋገጫ
-
-✅ በእውነት እንደገባ የተረጋገጠ: ${s.confirmedRevenue} ብር (${s.confirmedReceiptCount})
-⚠️ ገና ያልተመሳከረ: ${s.unreconciledRevenue} ብር (${s.unreconciledCount})
-🚫 እንዳልገባ የተመዘገበ: ${s.notReceivedRevenue} ብር (${s.notReceivedCount})
-
-SOLD መሆኑ ብቻ ገንዘቡ ገብቷል ማለት አይደለም። ያረጋገጡትን ብቻ ✅ ይጫኑ።`
-    : `💵 Revenue reconciliation
-
-Confirmed received: ${s.confirmedRevenue} ETB (${s.confirmedReceiptCount})
-Unreconciled historical SOLD: ${s.unreconciledRevenue} ETB (${s.unreconciledCount})
-Marked not received: ${s.notReceivedRevenue} ETB (${s.notReceivedCount})
-
-A SOLD ticket is not proof that money reached FinoteBirhan. Confirm only transactions you can verify in the real account/cash records.`,
-    { reply_markup: inlineKeyboard([[{ text: am ? '⬅️ ዳሽቦርድ' : '⬅️ Dashboard', callback_data: 'admin_dashboard' }]]) }
-  );
-  if (!queue.length) return;
-  for (const purchase of queue) {
-    const source = purchase.source === 'seller' ? `Seller${purchase.seller_name ? ` · ${purchase.seller_name}` : ''}` : 'Direct bot';
-    await bot.sendMessage(telegramId,
-      `#${purchase.id}
-${purchase.amount_etb} ETB · ${packageLabel(purchase.package_type)}
-${source}
-Buyer: ${purchase.buyer_name}
-Numbers: ${purchase.numbers || '-'}
-Paid/SOLD at: ${purchase.paid_at || purchase.created_at}
-
-Did FinoteBirhan actually receive this money?`,
-      { reply_markup: inlineKeyboard([[
-        { text: '✅ Received', callback_data: `admin_receipt_yes:${purchase.id}` },
-        { text: '🚫 Not received', callback_data: `admin_receipt_no:${purchase.id}` }
-      ]]) }
-    );
-  }
-}
-
-async function showPaymentAccounts(telegramId) {
-  if (!db.isAdmin(telegramId)) return bot.sendMessage(telegramId, 'Admin access required.');
-  const am = langOf(telegramId) !== 'en';
-  const accounts = db.listPaymentAccounts();
-  const activeCount = accounts.filter((account) => account.is_active).length;
-  await bot.sendMessage(telegramId,
-    am
-      ? `💳 የፍኖተ ብርሃን የክፍያ አካውንቶች\n\nጠቅላላ: ${accounts.length} · ንቁ: ${activeCount}\nአዲስ አካውንት ሲጨምሩ ያለው አይተካም።`
-      : `💳 FinoteBirhan Transfer Accounts\n\nTotal: ${accounts.length} · Active: ${activeCount}\nAdding another account does not replace the existing ones.`,
-    { reply_markup: inlineKeyboard([
-      [{ text: am ? '➕ የክፍያ አካውንት ጨምር' : '➕ Add Transfer Account', callback_data: 'admin_payment_add' }],
-      [{ text: am ? '🔄 አድስ' : '🔄 Refresh', callback_data: 'admin_payment_accounts' }, { text: am ? '⬅️ ዳሽቦርድ' : '⬅️ Dashboard', callback_data: 'admin_dashboard' }]
-    ]) }
-  );
-
-  if (!accounts.length) {
-    return bot.sendMessage(telegramId, am ? 'ምንም የክፍያ አካውንት አልተዘጋጀም።' : 'No transfer accounts are configured.');
-  }
-
-  for (const account of accounts) {
-    const status = account.is_active ? (am ? 'ንቁ' : 'ACTIVE') : (am ? 'ዝግ' : 'DISABLED');
-    const defaultLine = account.is_default ? (am ? '\n★ ዋና አካውንት' : '\n★ DEFAULT') : '';
-    const rows = [];
-    if (!account.is_default && account.is_active) rows.push([{ text: am ? '★ ዋና አድርግ' : '★ Set Default', callback_data: `admin_payment_default:${account.id}` }]);
-    rows.push([
-      { text: account.is_active ? (am ? '⏸ አጥፋ' : '⏸ Disable') : (am ? '▶️ አንቃ' : '▶️ Enable'), callback_data: `admin_payment_toggle:${account.id}` },
-      { text: am ? '✏️ ቀይር' : '✏️ Edit', callback_data: `admin_payment_edit:${account.id}` }
-    ]);
-    rows.push([{ text: am ? '🗑 አጥፋ' : '🗑 Delete', callback_data: `admin_payment_delete_confirm:${account.id}` }]);
-    await bot.sendMessage(telegramId,
-      `#${account.id} · ${status}${defaultLine}\n\n${account.provider}\n${account.account_name}\n${account.account_number}`,
-      { reply_markup: inlineKeyboard(rows) }
-    );
-  }
-}
-
-async function startAdminPaymentAccountAdd(adminId) {
-  if (!db.isAdmin(adminId)) return bot.sendMessage(adminId, 'Admin access required.');
-  db.setUserState(adminId, 'admin_payment_account_provider', { mode: 'add' });
-  await bot.sendMessage(adminId, '➕ Add Transfer Account\n\nSend the payment provider/bank name (for example CBE, Telebirr, M-Pesa).', { reply_markup: removeKeyboard() });
-}
-
-async function startAdminPaymentAccountEdit(adminId, accountId) {
-  if (!db.isAdmin(adminId)) return bot.sendMessage(adminId, 'Admin access required.');
-  const account = db.getPaymentAccount(accountId);
-  if (!account) return bot.sendMessage(adminId, 'Transfer account not found.');
-  db.setUserState(adminId, 'admin_payment_account_provider', { mode: 'edit', accountId: account.id });
-  await bot.sendMessage(adminId, `✏️ Edit Transfer Account #${account.id}\n\nCurrent provider: ${account.provider}\n\nSend the provider/bank name.`, { reply_markup: removeKeyboard() });
-}
-
-async function handleAdminPaymentAccountState(message, state) {
-  const adminId = message.from.id;
-  if (!db.isAdmin(adminId)) {
-    db.clearUserState(adminId);
-    return bot.sendMessage(adminId, 'Admin access required.');
-  }
-  const text = String(message.text || '').trim();
-  const data = { ...(state.data || {}) };
-  if (!['add', 'edit'].includes(data.mode)) {
-    db.clearUserState(adminId);
-    return bot.sendMessage(adminId, 'Transfer account setup expired. Open Admin → Transfer Accounts again.');
-  }
-
-  if (state.state === 'admin_payment_account_provider') {
-    if (text.length < 2 || text.length > 30) return bot.sendMessage(adminId, 'Send a valid provider/bank name (2–30 characters).');
-    data.paymentProvider = text;
-    db.setUserState(adminId, 'admin_payment_account_name', data);
-    const current = data.mode === 'edit' ? db.getPaymentAccount(data.accountId) : null;
-    return bot.sendMessage(adminId, `Send the account holder name.${current ? `\nCurrent: ${current.account_name}` : ''}`);
-  }
-
-  if (state.state === 'admin_payment_account_name') {
-    if (text.length < 2 || text.length > 80) return bot.sendMessage(adminId, 'Send a valid account holder name (2–80 characters).');
-    data.accountName = text;
-    db.setUserState(adminId, 'admin_payment_account_number', data);
-    const current = data.mode === 'edit' ? db.getPaymentAccount(data.accountId) : null;
-    return bot.sendMessage(adminId, `Send the account number or wallet phone number.${current ? `\nCurrent: ${current.account_number}` : ''}`);
-  }
-
-  if (state.state === 'admin_payment_account_number') {
-    if (text.length < 4 || text.length > 50) return bot.sendMessage(adminId, 'Send a valid account number (4–50 characters).');
-    try {
-      const fields = { provider: data.paymentProvider, accountName: data.accountName, accountNumber: text };
-      const account = data.mode === 'edit'
-        ? db.updatePaymentAccount(data.accountId, fields, adminId)
-        : db.addPaymentAccount(fields, adminId);
-      db.clearUserState(adminId);
-      await bot.sendMessage(adminId,
-        `${data.mode === 'edit' ? '✅ Transfer account updated.' : '✅ Transfer account added. Existing accounts were kept.'}\n\n#${account.id} ${account.provider}\n${account.account_name}\n${account.account_number}${account.is_default ? '\n★ Default' : ''}`);
-      return showPaymentAccounts(adminId);
-    } catch (error) {
-      db.clearUserState(adminId);
-      await bot.sendMessage(adminId, `⚠️ ${error.message}`);
-      return showPaymentAccounts(adminId);
-    }
-  }
-}
-
-async function showPendingSellers(telegramId) {
-  const approved = db.approvedSellerStats();
-  const invites = db.listSellerInvites();
-
-  await bot.sendMessage(telegramId,
-    `🧾 Ticket Sellers
-
-Active: ${approved.length}
-Waiting for registration: ${invites.length}`,
-    { reply_markup: inlineKeyboard([[{ text: '➕ Add Ticket Seller', callback_data: 'admin_seller_add' }],[{ text: '🔄 Refresh', callback_data: 'admin_sellers' }]]) }
-  );
-
-  if (approved.length) {
-    const text = approved.map((seller) =>
-      `#${seller.id} ${seller.display_name}
-` +
-      `Telegram: ${seller.telegram_id}
-Phone: ${seller.phone}
-` +
-      `Buyers: ${seller.customers} · Sales: ${seller.paid_count} · Tickets: ${seller.tickets_issued}
-` +
-      `Sales value: ${seller.revenue} ETB · Pending: ${seller.pending_count}`
-    ).join('\n');
-    await bot.sendMessage(telegramId, `Active Ticket Sellers
-
-${text}`);
-  }
-
-  if (invites.length) {
-    const text = invites.map((invite) => `• Telegram ${invite.telegram_id} · waiting for /start registration`).join('\n');
-    await bot.sendMessage(telegramId, `Waiting for registration
-
-${text}`);
-  }
-}
-
-function recoveryActionRows(purchase) {
-  const assessment = db.assessRecoveryPurchase(purchase.id);
-  const rows = [[{ text: '🔎 Inspect', callback_data: `admin_recovery_inspect:${purchase.id}` }]];
-  const hasEvidence = Boolean(purchase.payment_reference || purchase.payment_file_id || purchase.source === 'seller');
-  const canApprove = purchase.status === 'expired'
-    ? Boolean(assessment?.availableForRestore && hasEvidence)
-    : hasEvidence;
-  if (canApprove) {
-    rows.push([{ text: purchase.status === 'expired' ? '♻️ Recover & approve' : '✅ Approve', callback_data: `admin_pay_ok:${purchase.id}` }]);
-  }
-  if (purchase.source === 'direct' && !purchase.payment_reference) {
-    rows.push([{ text: '🔗 Ask link/reference', callback_data: `admin_pay_askref:${purchase.id}` }]);
-  }
-  rows.push([{ text: purchase.status === 'expired' ? '❌ Resolve as unpaid' : '❌ Reject / release', callback_data: `admin_pay_no:${purchase.id}` }]);
-  rows.push([{ text: '🔄 Refresh Recovery', callback_data: 'admin_payments' }]);
-  return rows;
-}
-
-async function showRecoveryInspection(telegramId, purchaseId) {
-  const purchase = db.getPurchase(purchaseId);
-  if (!purchase) return bot.sendMessage(telegramId, 'Recovery item not found. Refresh Recovery.');
-  const assessment = db.assessRecoveryPurchase(purchase.id);
-  const numbers = (purchase.numbers || []).map((n) => `${n.pool} ETB #${formatNumber(n.number)}`).join(' · ');
-  const seller = purchase.seller?.display_name || '-';
-  const safety = purchase.status === 'expired'
-    ? (assessment?.availableForRestore
-        ? 'SAFE TO RESTORE — original number(s) are currently available.'
-        : `BLOCKED — ${assessment?.conflicts?.join('; ') || 'original number(s) unavailable.'}`)
-    : (assessment?.intact ? 'Reservation lock is intact.' : 'WARNING — reservation lock is not intact.');
-  await bot.sendMessage(telegramId,
-    `🔎 RECOVERY INSPECT\n\nPurchase: ${purchase.id}\nStatus: ${String(purchase.status).toUpperCase()}\nSource: ${purchase.source}\nBuyer: ${purchase.buyer_name}\nPhone: ${purchase.buyer_phone}\nSeller: ${seller}\nPackage: ${purchase.package_type}\nNumbers: ${numbers || '-'}\nAmount: ${purchase.amount_etb} ETB\nPayment target: ${purchase.payment_target || '-'}\nTransfer: ${purchase.payment_provider || '-'} · ${purchase.payment_account_name || '-'} · ${purchase.payment_account_number || '-'}\nReference: ${purchase.payment_reference || '-'}\nStored receipt: ${purchase.payment_file_id ? 'YES' : 'NO'}\nCreated: ${purchase.created_at}\nSubmitted: ${purchase.submitted_at || '-'}\nReserved until: ${purchase.reserved_until}\n\n${safety}\n\nNote: ${purchase.note || '-'}`,
-    { reply_markup: inlineKeyboard(recoveryActionRows(purchase)) }
-  );
-  if (purchase.payment_file_id) {
-    const caption = `Stored payment proof · ${purchase.buyer_name} · ${purchase.amount_etb} ETB · ${purchase.id}`;
-    try { await bot.call('sendPhoto', { chat_id: telegramId, photo: purchase.payment_file_id, caption }); }
-    catch {
-      try { await bot.call('sendDocument', { chat_id: telegramId, document: purchase.payment_file_id, caption }); } catch {}
-    }
-  }
-}
-
-async function showPendingPayments(telegramId) {
-  const rows = db.recoveryQueue(50, 24 * 7);
-  const stats = db.recoveryStats();
-  if (!rows.length) return bot.sendMessage(telegramId, '✅ Recovery queue is clear. No unresolved or recently expired purchases need attention.');
-  const c = stats.counts || {};
-  await bot.sendMessage(telegramId,
-    `🚨 RECOVERY QUEUE\n\nNeeds attention: ${stats.attention}\nManual review: ${c.manual_review || 0}\nVerification pending: ${c.verification_pending || 0}\nSeller confirmation: ${c.seller_review || 0}\nAwaiting proof/reserved: ${(c.awaiting_proof || 0) + (c.reserved || 0)}\nExpired in last 7 days: ${stats.recentExpired}\n\nInspect uncertain items before approving. Expired purchases can only be restored when their original ticket numbers are still free.`
-  );
-  for (const purchase of rows) {
-    const assessment = db.assessRecoveryPurchase(purchase.id);
-    const numbers = (purchase.numbers || []).map((n) => `${n.pool}: #${formatNumber(n.number)}`).join(' · ');
-    const seller = purchase.seller?.display_name ? ` · Seller: ${purchase.seller.display_name}` : '';
-    const evidence = purchase.payment_reference
-      ? `Reference: ${purchase.payment_reference}`
-      : purchase.payment_file_id
-        ? 'Evidence: stored receipt image'
-        : purchase.source === 'seller'
-          ? 'Evidence: seller confirmation pending'
-          : 'Evidence: none stored';
-    const safety = purchase.status === 'expired'
-      ? (assessment?.availableForRestore ? 'Recovery: original number(s) still free.' : `⚠️ Recovery blocked: ${assessment?.conflicts?.join('; ') || 'number unavailable.'}`)
-      : (assessment?.intact ? 'Reservation: intact.' : '⚠️ Reservation lock is not intact.');
-    await bot.sendMessage(telegramId,
-      `🚨 ${purchase.buyer_name}\nStatus: ${String(purchase.status).toUpperCase()} · Source: ${purchase.source}${seller}\nPhone: ${purchase.buyer_phone}\nAmount: ${purchase.amount_etb} ETB\nNumbers: ${numbers || '-'}\n${evidence}\nCreated: ${purchase.created_at}\nReserved until: ${purchase.reserved_until}\n${safety}\n${purchase.note || ''}`,
-      { reply_markup: inlineKeyboard(recoveryActionRows(purchase)) }
-    );
-  }
+  await bot.sendMessage(telegramId, text, {
+    reply_markup: inlineKeyboard([
+      [{ text: am ? '💰 ገቢ አረጋግጥ' : '💰 Reconcile', callback_data: 'admin_revenue_reconcile' }, { text: '🚨 Recovery', callback_data: 'admin_payments' }],
+      [{ text: am ? '🎟 ትኬቶች' : '🎟 Tickets', callback_data: 'admin_pools' }, { text: am ? '🤝 ሻጮች' : '🤝 Sellers', callback_data: 'admin_sellers' }],
+      [{ text: am ? '💳 አካውንቶች' : '💳 Accounts', callback_data: 'admin_payment_accounts' }, { text: am ? '🏆 ዕጣ' : '🏆 Draw', callback_data: 'admin_draw' }],
+      [{ text: am ? '📤 ላክ' : '📤 Export', callback_data: 'admin_export' }, { text: am ? '⚙️ ተጨማሪ' : '⚙️ More', callback_data: 'admin_help' }]
+    ])
+  });
 }
 
 async function showPoolStatus(telegramId) {
