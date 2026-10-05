@@ -6,6 +6,7 @@ on:
       - fix/revenue-reconciliation-expiry
     paths:
       - '.patches/revenue_reconciliation_expiry.py'
+      - '.patches/revenue_reconciliation_expiry_fixup.py'
       - '.github/workflows/apply-revenue-reconciliation-expiry.yml'
   workflow_dispatch:
 
@@ -30,7 +31,9 @@ jobs:
           cache-dependency-path: bot/backend/package.json
 
       - name: Apply patch
-        run: python3 .patches/revenue_reconciliation_expiry.py
+        run: |
+          python3 .patches/revenue_reconciliation_expiry.py
+          python3 .patches/revenue_reconciliation_expiry_fixup.py
 
       - name: Install dependencies
         working-directory: bot/backend
@@ -43,6 +46,7 @@ jobs:
           node --check bot/backend/src/config.js
           node --check bot/backend/tests/sellerCashAccounting.test.js
           node --check bot/backend/tests/navigationRecoveryCore.test.js
+          node --check bot/backend/tests/recovery.test.js
 
       - name: Full regression suite
         working-directory: bot/backend
@@ -60,7 +64,7 @@ jobs:
 
       - name: Commit validated source and remove staging files
         run: |
-          rm -f .patches/revenue_reconciliation_expiry.py .github/workflows/apply-revenue-reconciliation-expiry.yml
+          rm -f .patches/revenue_reconciliation_expiry.py .patches/revenue_reconciliation_expiry_fixup.py .github/workflows/apply-revenue-reconciliation-expiry.yml
           rmdir .patches 2>/dev/null || true
           git config user.name "Cachilupi"
           git config user.email "nebiyuelyas3@gmail.com"
