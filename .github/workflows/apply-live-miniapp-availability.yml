@@ -10,6 +10,7 @@ on:
       - '.patches/admin_dashboard_accuracy.py'
       - '.patches/admin_dashboard_tidy.py'
       - '.patches/receipt_confirmation_accuracy.py'
+      - '.patches/admin_reconciliation_simple.py'
       - '.github/workflows/apply-live-miniapp-availability.yml'
   workflow_dispatch:
 
@@ -48,6 +49,7 @@ jobs:
           python3 .patches/admin_dashboard_accuracy.py
           python3 .patches/admin_dashboard_tidy.py
           python3 .patches/receipt_confirmation_accuracy.py
+          python3 .patches/admin_reconciliation_simple.py
 
       - name: Install backend dependencies
         working-directory: bot/backend
@@ -88,12 +90,14 @@ jobs:
           grep -F "Sold purchase value" bot/backend/src/index.js
           grep -F "const receiptConfirmed = receiptVerified === true;" bot/backend/src/db.js
           grep -F "receiptMethod: 'admin_payment_confirmation'" bot/backend/src/index.js
+          grep -F "unreconciledPaidPurchases(1)" bot/backend/src/index.js
+          grep -F "NEXT TO CHECK" bot/backend/src/index.js
           if grep -F "rows.push([{ text: buyText, web_app:" bot/backend/src/index.js; then exit 1; fi
           if grep -F 'dot taken' index.html; then exit 1; fi
 
       - name: Commit validated source and remove staging files
         run: |
-          rm -f .patches/live_miniapp_availability.py .patches/session_retry_fix.py .patches/admin_dashboard_accuracy.py .patches/admin_dashboard_tidy.py .patches/receipt_confirmation_accuracy.py .patches/vercel_validate.sh .github/workflows/apply-live-miniapp-availability.yml vercel.json
+          rm -f .patches/live_miniapp_availability.py .patches/session_retry_fix.py .patches/admin_dashboard_accuracy.py .patches/admin_dashboard_tidy.py .patches/receipt_confirmation_accuracy.py .patches/admin_reconciliation_simple.py .patches/vercel_validate.sh .github/workflows/apply-live-miniapp-availability.yml vercel.json
           rmdir .patches 2>/dev/null || true
           git config user.name "Cachilupi"
           git config user.email "nebiyuelyas3@gmail.com"
