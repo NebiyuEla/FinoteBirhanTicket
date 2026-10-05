@@ -7,6 +7,7 @@ on:
     paths:
       - '.patches/live_miniapp_availability.py'
       - '.patches/session_retry_fix.py'
+      - '.patches/admin_dashboard_accuracy.py'
       - '.github/workflows/apply-live-miniapp-availability.yml'
   workflow_dispatch:
 
@@ -42,6 +43,7 @@ jobs:
         run: |
           python3 .patches/live_miniapp_availability.py
           python3 .patches/session_retry_fix.py
+          python3 .patches/admin_dashboard_accuracy.py
 
       - name: Install backend dependencies
         working-directory: bot/backend
@@ -54,15 +56,17 @@ jobs:
           node --check bot/backend/src/db.js
           node --check bot/backend/tests/liveMiniAppAvailability.test.js
           node --check bot/backend/tests/sessionRetry.test.js
+          node --check bot/backend/tests/adminStatsAccuracy.test.js
           node --check bot/backend/tests/navigationRecoveryCore.test.js
 
       - name: Full regression suite
         working-directory: bot/backend
         run: npm test
 
-      - name: Verify live-availability invariants
+      - name: Verify live-availability and admin-stat invariants
         run: |
-          grep -F "const BOT_BUILD = '1.3.8';" bot/backend/src/index.js
+          grep -F "const BOT_BUILD = '1.3.9';" bot/backend/src/index.js
+          grep -F '"version": "1.3.9"' bot/backend/package.json
           grep -F "sendFreshMiniAppLauncher" bot/backend/src/index.js
           grep -F "createWebSession(telegramId, null, 5)" bot/backend/src/index.js
           grep -F "createWebSession(seller.telegram_id, seller.id, 5)" bot/backend/src/index.js
@@ -72,15 +76,20 @@ jobs:
           grep -F "app.js?v=20261005-live-availability" index.html
           grep -F "peekWebSession(token, telegramId)" bot/backend/src/db.js
           grep -F "const session = db.peekWebSession(payload.session, telegramId);" bot/backend/src/index.js
+          grep -F "statisticsOk" bot/backend/src/db.js
+          grep -F "soldNumberCount" bot/backend/src/db.js
+          grep -F "admin_more" bot/backend/src/index.js
+          grep -F "Confirmed received" bot/backend/src/index.js
+          grep -F "Sold purchase value" bot/backend/src/index.js
           if grep -F "rows.push([{ text: buyText, web_app:" bot/backend/src/index.js; then exit 1; fi
           if grep -F 'dot taken' index.html; then exit 1; fi
 
       - name: Commit validated source and remove staging files
         run: |
-          rm -f .patches/live_miniapp_availability.py .patches/session_retry_fix.py .patches/vercel_validate.sh .github/workflows/apply-live-miniapp-availability.yml vercel.json
+          rm -f .patches/live_miniapp_availability.py .patches/session_retry_fix.py .patches/admin_dashboard_accuracy.py .patches/vercel_validate.sh .github/workflows/apply-live-miniapp-availability.yml vercel.json
           rmdir .patches 2>/dev/null || true
           git config user.name "Cachilupi"
           git config user.email "nebiyuelyas3@gmail.com"
           git add -A
-          git commit -m "fix: keep Mini App inventory fresh and retry-safe"
+          git commit -m "fix: live ticket inventory and accurate admin statistics"
           git push origin HEAD:fix/live-miniapp-availability
