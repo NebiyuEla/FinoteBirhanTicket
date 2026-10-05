@@ -26,6 +26,19 @@ replace_once(
     "    }\n"
 )
 
+# Existing open seller reservations must follow the new settlement rule too. Keep paid history untouched for audit.
+replace_once(
+    'bot/backend/src/db.js',
+    "    this.db.exec(`UPDATE purchases SET amount_etb = CASE package_type\n"
+    "      WHEN 'bundle' THEN 300 WHEN '200' THEN 200 WHEN '100' THEN 100 WHEN '50' THEN 50\n"
+    "      ELSE amount_etb END`);\n",
+    "    this.db.exec(`UPDATE purchases SET amount_etb = CASE package_type\n"
+    "      WHEN 'bundle' THEN 300 WHEN '200' THEN 200 WHEN '100' THEN 100 WHEN '50' THEN 50\n"
+    "      ELSE amount_etb END`);\n"
+    "    this.db.exec(`UPDATE purchases SET payment_target='finote', payment_provider=NULL, payment_account_name=NULL, payment_account_number=NULL\n"
+    "      WHERE source='seller' AND status IN ('reserved','awaiting_proof','verification_pending','seller_review','manual_review')`);\n"
+)
+
 # Build-version regression expectation.
 replace_once(
     'bot/backend/tests/navigationRecoveryCore.test.js',
@@ -49,29 +62,17 @@ replace_once(
     "    await notifyAdminsOfReview(updated, message);\n"
 )
 
-# Remove misleading seller-owned account copy from the seller stats panel. Legacy data/methods remain readable for audit.
+# Remove misleading seller-owned account copy from the seller stats panel. Legacy account data remains readable for audit only.
 replace_once(
     'bot/backend/src/index.js',
-    "    💳 የእርስዎ የክፍያ አካውንት\n"
-    "    ${account}\n"
-    "    \n"
-    "    🧾 የቅርብ ሽያጮች\n",
-    "    🏦 ሁሉም አዲስ ሽያጮች ወደ ፍኖተ ብርሃን አካውንት ይመዘገባሉ።\n"
-    "    \n"
-    "    🧾 የቅርብ ሽያጮች\n"
+    "💳 የእርስዎ የክፍያ አካውንት\n${account}\n\n🧾 የቅርብ ሽያጮች\n",
+    "🏦 ሁሉም አዲስ ሽያጮች ወደ ፍኖተ ብርሃን አካውንት ይመዘገባሉ።\n\n🧾 የቅርብ ሽያጮች\n"
 )
-
 replace_once(
     'bot/backend/src/index.js',
-    "    Your payment account\n"
-    "    ${account}\n"
-    "    \n"
-    "    Recent sales\n",
-    "    All new seller sales settle to the FinoteBirhan account and require admin approval.\n"
-    "    \n"
-    "    Recent sales\n"
+    "Your payment account\n${account}\n\nRecent sales\n",
+    "All new seller sales settle to the FinoteBirhan account and require admin approval.\n\nRecent sales\n"
 )
-
 replace_once(
     'bot/backend/src/index.js',
     "    { reply_markup: inlineKeyboard([[{ text: am ? '💳 የክፍያ አካውንት ቀይር' : '💳 Update payment account', callback_data: 'seller_account' }],[{ text: am ? '🔄 አድስ' : '🔄 Refresh', callback_data: 'seller_panel' }]]) }\n",
@@ -114,16 +115,13 @@ replace_once(
 replace_once(
     'app.js',
     "  paySeller.disabled = !sellerPayAvailable;\n",
-    "  paySeller.disabled = true;\n"
-    "  paySeller.hidden = true;\n"
+    "  paySeller.disabled = true;\n  paySeller.hidden = true;\n"
 )
 replace_once(
     'app.js',
     "      payload.payment_target = state.paymentTarget;\n",
     "      payload.payment_target = 'finote';\n"
 )
-
-# Hide the obsolete destination button in static markup too, before JS runs.
 replace_once(
     'index.html',
     '<button id="paySeller" class="pay-option" type="button" data-pay="seller" data-i18n="sellerAccount">የእኔ አካውንት</button>',
