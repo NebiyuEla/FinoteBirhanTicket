@@ -27,7 +27,7 @@ defaults:
 
 jobs:
   apply-test-commit:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
@@ -44,12 +44,12 @@ jobs:
 
       - name: Apply patches
         run: |
-          python3 .patches/live_miniapp_availability.py
-          python3 .patches/session_retry_fix.py
-          python3 .patches/admin_dashboard_accuracy.py
-          python3 .patches/admin_dashboard_tidy.py
-          python3 .patches/receipt_confirmation_accuracy.py
-          python3 .patches/admin_reconciliation_simple.py
+          python .patches/live_miniapp_availability.py
+          python .patches/session_retry_fix.py
+          python .patches/admin_dashboard_accuracy.py
+          python .patches/admin_dashboard_tidy.py
+          python .patches/receipt_confirmation_accuracy.py
+          python .patches/admin_reconciliation_simple.py
 
       - name: Install backend dependencies
         working-directory: bot/backend
