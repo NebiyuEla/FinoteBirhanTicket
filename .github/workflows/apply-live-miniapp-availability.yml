@@ -8,6 +8,7 @@ on:
       - '.patches/live_miniapp_availability.py'
       - '.patches/session_retry_fix.py'
       - '.patches/admin_dashboard_accuracy.py'
+      - '.patches/admin_dashboard_tidy.py'
       - '.github/workflows/apply-live-miniapp-availability.yml'
   workflow_dispatch:
 
@@ -44,6 +45,7 @@ jobs:
           python3 .patches/live_miniapp_availability.py
           python3 .patches/session_retry_fix.py
           python3 .patches/admin_dashboard_accuracy.py
+          python3 .patches/admin_dashboard_tidy.py
 
       - name: Install backend dependencies
         working-directory: bot/backend
@@ -86,7 +88,7 @@ jobs:
 
       - name: Commit validated source and remove staging files
         run: |
-          rm -f .patches/live_miniapp_availability.py .patches/session_retry_fix.py .patches/admin_dashboard_accuracy.py .patches/vercel_validate.sh .github/workflows/apply-live-miniapp-availability.yml vercel.json
+          rm -f .patches/live_miniapp_availability.py .patches/session_retry_fix.py .patches/admin_dashboard_accuracy.py .patches/admin_dashboard_tidy.py .patches/vercel_validate.sh .github/workflows/apply-live-miniapp-availability.yml vercel.json
           rmdir .patches 2>/dev/null || true
           git config user.name "Cachilupi"
           git config user.email "nebiyuelyas3@gmail.com"
