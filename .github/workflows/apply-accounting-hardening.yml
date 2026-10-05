@@ -6,6 +6,7 @@ on:
       - fix/accounting-hardening-work
     paths:
       - '.patches/accounting_hardening.py'
+      - '.patches/accounting_hardening_fixup.py'
       - '.github/workflows/apply-accounting-hardening.yml'
   workflow_dispatch:
 
@@ -30,7 +31,9 @@ jobs:
           cache-dependency-path: bot/backend/package.json
 
       - name: Apply accounting hardening
-        run: python3 .patches/accounting_hardening.py
+        run: |
+          python3 .patches/accounting_hardening.py
+          python3 .patches/accounting_hardening_fixup.py
 
       - name: Install dependencies
         working-directory: bot/backend
@@ -39,6 +42,7 @@ jobs:
       - name: Syntax checks
         working-directory: bot/backend
         run: |
+          node --check src/start.js
           node --check src/index.js
           node --check src/db.js
           node --check tests/core.test.js
@@ -54,10 +58,11 @@ jobs:
           grep -F "Ticket sales value:" bot/backend/src/index.js
           grep -F "Bundle = 300 ETB" bot/backend/src/index.js
           grep -F "const normalizedPaymentTarget = 'finote';" bot/backend/src/db.js
+          grep -F "Seller-entered sales:" bot/backend/src/index.js
 
       - name: Commit validated source and remove staging files
         run: |
-          rm -f .patches/accounting_hardening.py .github/workflows/apply-accounting-hardening.yml
+          rm -f .patches/accounting_hardening.py .patches/accounting_hardening_fixup.py .github/workflows/apply-accounting-hardening.yml
           rmdir .patches 2>/dev/null || true
           git config user.name "Cachilupi"
           git config user.email "nebiyuelyas3@gmail.com"
