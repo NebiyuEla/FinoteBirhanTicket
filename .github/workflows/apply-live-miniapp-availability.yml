@@ -9,6 +9,7 @@ on:
       - '.patches/session_retry_fix.py'
       - '.patches/admin_dashboard_accuracy.py'
       - '.patches/admin_dashboard_tidy.py'
+      - '.patches/receipt_confirmation_accuracy.py'
       - '.github/workflows/apply-live-miniapp-availability.yml'
   workflow_dispatch:
 
@@ -46,6 +47,7 @@ jobs:
           python3 .patches/session_retry_fix.py
           python3 .patches/admin_dashboard_accuracy.py
           python3 .patches/admin_dashboard_tidy.py
+          python3 .patches/receipt_confirmation_accuracy.py
 
       - name: Install backend dependencies
         working-directory: bot/backend
@@ -60,6 +62,7 @@ jobs:
           node --check bot/backend/tests/sessionRetry.test.js
           node --check bot/backend/tests/adminStatsAccuracy.test.js
           node --check bot/backend/tests/navigationRecoveryCore.test.js
+          node --check bot/backend/tests/sellerCashAccounting.test.js
 
       - name: Full regression suite
         working-directory: bot/backend
@@ -83,15 +86,17 @@ jobs:
           grep -F "admin_more" bot/backend/src/index.js
           grep -F "Confirmed received" bot/backend/src/index.js
           grep -F "Sold purchase value" bot/backend/src/index.js
+          grep -F "const receiptConfirmed = receiptVerified === true;" bot/backend/src/db.js
+          grep -F "receiptMethod: 'admin_payment_confirmation'" bot/backend/src/index.js
           if grep -F "rows.push([{ text: buyText, web_app:" bot/backend/src/index.js; then exit 1; fi
           if grep -F 'dot taken' index.html; then exit 1; fi
 
       - name: Commit validated source and remove staging files
         run: |
-          rm -f .patches/live_miniapp_availability.py .patches/session_retry_fix.py .patches/admin_dashboard_accuracy.py .patches/admin_dashboard_tidy.py .patches/vercel_validate.sh .github/workflows/apply-live-miniapp-availability.yml vercel.json
+          rm -f .patches/live_miniapp_availability.py .patches/session_retry_fix.py .patches/admin_dashboard_accuracy.py .patches/admin_dashboard_tidy.py .patches/receipt_confirmation_accuracy.py .patches/vercel_validate.sh .github/workflows/apply-live-miniapp-availability.yml vercel.json
           rmdir .patches 2>/dev/null || true
           git config user.name "Cachilupi"
           git config user.email "nebiyuelyas3@gmail.com"
           git add -A
-          git commit -m "fix: live ticket inventory and accurate admin statistics"
+          git commit -m "fix: live inventory and trustworthy admin statistics"
           git push origin HEAD:fix/live-miniapp-availability
