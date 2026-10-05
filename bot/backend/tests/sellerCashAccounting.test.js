@@ -25,7 +25,7 @@ function insertPaid(db, { id, packageType, amount, sellerId = null, source = 'di
   );
 }
 
-test('Revenue matches all paid ticket sales while seller cash stays separately visible', () => {
+test('Revenue matches all paid ticket sales while seller cash stays separately visible for legacy audit', () => {
   const { db, dir, seller } = makeDb();
   try {
     insertPaid(db, { id: 'DIRECT-200', packageType: '200', amount: 200 });
@@ -42,6 +42,10 @@ test('Revenue matches all paid ticket sales while seller cash stays separately v
     assert.equal(dashboard.platformPaidCount, 2);
     assert.equal(dashboard.sellerCashRevenue, 550);
     assert.equal(dashboard.sellerCashCount, 4);
+    assert.deepEqual(
+      dashboard.paidPackages.map((row) => [row.package_type, row.sales, row.amount]).sort(),
+      [['100', 2, 200], ['200', 2, 400], ['50', 1, 50], ['bundle', 1, 300]].sort()
+    );
     assert.deepEqual(
       dashboard.sellerCashPackages.map((row) => [row.package_type, row.sales, row.amount]).sort(),
       [['100', 2, 200], ['50', 1, 50], ['bundle', 1, 300]].sort()
@@ -64,6 +68,51 @@ test('Revenue matches all paid ticket sales while seller cash stays separately v
   }
 });
 
+test('seller sale cannot become paid until an admin approves it and seller target is normalized to FinoteBirhan', () => {
+  const { db, dir, seller } = makeDb();
+  try {
+    db.addAdmin(999);
+    const sale = db.reserveSellerSale({
+      sellerTelegramId: 3,
+      buyerName: 'Cash Buyer',
+      buyerPhone: '0912345678',
+      packageType: 'bundle',
+      selectedNumbers: { 200: 11, 100: 12, 50: 13 },
+      paymentTarget: 'seller'
+    });
+    assert.equal(sale.payment_target, 'finote');
+    assert.equal(sale.amount_etb, 300);
+    assert.throws(() => db.confirmPurchase(sale.id, seller.telegram_id, { note: 'seller self-confirm' }), /admin payment approval/i);
+    assert.equal(db.getPurchase(sale.id).status, 'seller_review');
+    const paid = db.confirmPurchase(sale.id, 999, { note: 'admin verified money received' });
+    assert.equal(paid.status, 'paid');
+    assert.equal(db.ticketsForPurchase(sale.id).length, 3);
+    const dashboard = db.dashboardStats();
+    assert.equal(dashboard.revenue, 300);
+    assert.deepEqual(dashboard.paidPackages.map((r) => [r.package_type, r.sales, r.amount]), [['bundle', 1, 300]]);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('canonical package amount migration fixes malformed historical amounts', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'finote-canonical-prices-'));
+  const dbPath = path.join(dir, 'test.sqlite');
+  let db = new TicketDatabase(dbPath);
+  try {
+    db.ensureUser(1); db.setUserName(1, 'Buyer'); db.setUserPhone(1, '+251911111111');
+    insertPaid(db, { id: 'BAD-BUNDLE', packageType: 'bundle', amount: 350 });
+    assert.equal(db.getPurchase('BAD-BUNDLE').amount_etb, 350);
+    db.close();
+    db = new TicketDatabase(dbPath);
+    assert.equal(db.getPurchase('BAD-BUNDLE').amount_etb, 300);
+    assert.equal(db.dashboardStats().revenue, 300);
+  } finally {
+    try { db.close(); } catch {}
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('default ticket reservation timeout is 30 minutes', () => {
   const { db, dir } = makeDb();

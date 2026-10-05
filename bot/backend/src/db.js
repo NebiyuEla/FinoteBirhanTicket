@@ -213,6 +213,14 @@ export class TicketDatabase {
     this.ensureColumn('purchases', 'payment_account_id', 'INTEGER');
     this.ensureColumn('purchases', 'payment_account_name', 'TEXT');
     this.ensureColumn('purchases', 'payment_account_number', 'TEXT');
+    // Canonicalize historical purchase amounts from the package type. Revenue must
+    // never be reconstructed by summing sold draw/pool face values because a
+    // 300 ETB bundle issues 200 + 100 + 50 draw numbers (350 nominal).
+    this.db.exec(`UPDATE purchases SET amount_etb = CASE package_type
+      WHEN 'bundle' THEN 300 WHEN '200' THEN 200 WHEN '100' THEN 100 WHEN '50' THEN 50
+      ELSE amount_etb END`);
+    this.db.exec(`UPDATE purchases SET payment_target='finote', payment_provider=NULL, payment_account_name=NULL, payment_account_number=NULL
+      WHERE source='seller' AND status IN ('reserved','awaiting_proof','verification_pending','seller_review','manual_review')`);
     const addedTicketLink = this.ensureColumn('tickets', 'linked_telegram_id', 'INTEGER');
     // V4 and earlier seller purchases belonged to the buyer Telegram account.
     // Backfill only on the one-time schema upgrade so existing tickets stay attached.
@@ -767,8 +775,10 @@ export class TicketDatabase {
     const cleanPhone = normalizePhone(buyerPhone);
     if (cleanName.length < 3 || cleanName.length > 80) throw new Error('Enter the buyer full name.');
     if (!cleanPhone) throw new Error('Enter a valid Ethiopian buyer phone number.');
-    if (!['finote', 'seller'].includes(paymentTarget)) throw new Error('Choose a valid payment destination.');
-    if (paymentTarget === 'seller' && !this.sellerHasPaymentAccount(seller.id)) throw new Error('Set your payment account first.');
+    // Every seller sale belongs to FinoteBirhan. If a buyer pays cash, the seller
+    // still settles that cash to FinoteBirhan; a seller-owned destination must not
+    // create a separate revenue bucket or allow self-confirmation.
+    const normalizedPaymentTarget = 'finote';
 
     const pools = packagePools(packageType);
     const amount = amountForPackage(packageType);
@@ -791,12 +801,12 @@ export class TicketDatabase {
         const row = this.db.prepare('SELECT status FROM ticket_numbers WHERE pool=? AND number=?').get(pool, normalized[pool]);
         if (!row || row.status !== 'available') throw new Error(`#${formatNumber(normalized[pool])} in the ${pool} ETB draw was just taken.`);
       }
-      const provider = paymentTarget === 'seller' ? seller.payment_provider : null;
-      const accountName = paymentTarget === 'seller' ? seller.account_name : null;
-      const accountNumber = paymentTarget === 'seller' ? seller.account_number : null;
+      const provider = null;
+      const accountName = null;
+      const accountNumber = null;
       this.db.prepare(`INSERT INTO purchases(id,buyer_telegram_id,buyer_name,buyer_phone,package_type,amount_etb,seller_id,source,status,payment_provider,payment_account_name,payment_account_number,reserved_until,created_at,linked_telegram_id,payment_target)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-          id, sellerTelegramId, cleanName, cleanPhone, packageType, amount, seller.id, 'seller', 'seller_review', provider || null, accountName || null, accountNumber || null, reservedUntil, now, matched?.telegram_id ?? null, paymentTarget
+          id, sellerTelegramId, cleanName, cleanPhone, packageType, amount, seller.id, 'seller', 'seller_review', provider || null, accountName || null, accountNumber || null, reservedUntil, now, matched?.telegram_id ?? null, normalizedPaymentTarget
         );
       for (const pool of pools) {
         const n = normalized[pool];
@@ -805,7 +815,7 @@ export class TicketDatabase {
           .run(id, reservedUntil, matched?.telegram_id ?? sellerTelegramId, seller.id, pool, n);
       }
       this.db.exec('COMMIT');
-      this.log(sellerTelegramId, 'seller_sale.reserved', 'purchase', id, { buyerName: cleanName, buyerPhone: cleanPhone, packageType, selectedNumbers: normalized, paymentTarget });
+      this.log(sellerTelegramId, 'seller_sale.reserved', 'purchase', id, { buyerName: cleanName, buyerPhone: cleanPhone, packageType, selectedNumbers: normalized, requestedPaymentTarget: paymentTarget, paymentTarget: normalizedPaymentTarget });
       return this.getPurchase(id);
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -884,6 +894,9 @@ export class TicketDatabase {
     if (!purchase) throw new Error('Purchase not found.');
     if (purchase.status === 'paid') return purchase;
     if (!['verification_pending', 'seller_review', 'manual_review', 'awaiting_proof'].includes(purchase.status)) throw new Error(`Purchase cannot be confirmed from status ${purchase.status}.`);
+    if (purchase.source === 'seller' && !this.isAdmin(reviewerId)) {
+      throw new Error('Seller-originated sales require FinoteBirhan admin payment approval before tickets can be marked sold.');
+    }
     const now = nowIso();
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -1152,6 +1165,8 @@ export class TicketDatabase {
     const platform = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue
       FROM purchases WHERE status='paid' AND COALESCE(payment_target,'finote')='finote'`).get();
     const seller = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid' AND source='seller'`).get();
+    const paidPackages = this.db.prepare(`SELECT package_type, COUNT(*) AS sales, COALESCE(SUM(amount_etb),0) AS amount
+      FROM purchases WHERE status='paid' GROUP BY package_type`).all();
     const sellerCash = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue
       FROM purchases WHERE status='paid' AND source='seller' AND payment_target='seller'`).get();
     const sellerCashPackages = this.db.prepare(`SELECT package_type, COUNT(*) AS sales, COALESCE(SUM(amount_etb),0) AS amount
@@ -1175,6 +1190,7 @@ export class TicketDatabase {
       directRevenue: direct.revenue,
       sellerCount: seller.c,
       sellerRevenue: seller.revenue,
+      paidPackages,
       sellerCashCount: sellerCash.c,
       sellerCashRevenue: sellerCash.revenue,
       sellerCashPackages,

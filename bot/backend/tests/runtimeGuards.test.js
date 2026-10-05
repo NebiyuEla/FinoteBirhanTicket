@@ -107,7 +107,7 @@ test('Amharic buyer names remain comparable for later ticket linking', () => {
   assert.equal(normalizeNameForCompare(buyerName), normalizeNameForCompare('  ሚኪያስ   አቢዩ  '));
   assert.ok(normalizeNameForCompare(buyerName).length > 0);
   const sale = db.reserveSellerSale({ sellerTelegramId: 2, buyerName, buyerPhone: '0914444444', packageType: '50', selectedNumbers: { 50: 29 }, paymentTarget: 'finote' });
-  db.confirmPurchase(sale.id, 2, { note: 'paid' });
+  db.confirmPurchase(sale.id, 999, { note: 'paid and approved by admin' });
   db.ensureUser(4); db.setUserName(4, buyerName); db.setUserPhone(4, '+251955555555');
   const linked = db.linkSellerTicketsForUser(4);
   assert.deepEqual(linked, [sale.id]);
