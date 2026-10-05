@@ -10,7 +10,7 @@ import {
 
 assertRuntimeConfig();
 
-const BOT_BUILD = '1.3.6';
+const BOT_BUILD = '1.3.7';
 
 const db = new TicketDatabase(config.dbPath, {
   reservationMinutes: config.reservationMinutes,
@@ -629,7 +629,7 @@ async function sendPaymentInstructions(chatId, purchase) {
     return notifyAdmins(`⚠️ Sale blocked because the selected transfer account is not configured. Purchase ${purchase.id}.`);
   }
   const reviewText = purchase.source === 'seller'
-    ? (am ? `ማስረጃውን ከላኩ በኋላ ${sellerName} ክፍያውን ያረጋግጣል።` : `After you send proof, ${sellerName} will confirm the payment.`)
+    ? (am ? 'ማስረጃውን ከላኩ በኋላ የፍኖተ ብርሃን አስተዳዳሪ ክፍያውን ያረጋግጣል።' : 'After you send proof, a FinoteBirhan administrator will confirm the payment.')
     : verifier.enabled
       ? (am ? 'የግብይት ሊንክ/ማጣቀሻ ሲልኩ Verify.et በራሱ ያረጋግጣል።' : 'After you send the transaction reference, the payment will be verified automatically when supported.')
       : (am ? 'ማስረጃ ከላኩ በኋላ አስተዳዳሪ ያረጋግጣል።' : 'After you send proof, an administrator will review the payment.');
@@ -758,7 +758,7 @@ async function verifyDirectPayment(purchase, telegramId, proofMessage) {
   if (result.requestId) db.setVerificationPending(purchase.id, result.requestId, result.payload || result);
 
   if (result.outcome === 'approved') {
-    db.confirmPurchase(purchase.id, null, { verificationPayload: result.payload, note: result.reason });
+    db.confirmPurchase(purchase.id, null, { verificationPayload: result.payload, note: result.reason, receiptVerified: true, receiptMethod: 'verify.et' });
     await bot.sendMessage(telegramId, tr(telegramId, '✅ ክፍያዎ ተረጋግጧል። ዲጂታል ትኬትዎ ዝግጁ ነው።', '✅ Payment verified. Your digital ticket is ready.'));
     await sendIssuedTickets(telegramId, purchase.id);
     return;
@@ -1095,24 +1095,16 @@ async function handleCallback(query) {
       return bot.answerCallbackQuery(query.id, 'Not allowed.', true).catch(() => {});
     }
     if (data.startsWith('seller_ok:')) {
-      const numbers = purchase.numbers.map((n) => `${n.pool} ETB #${formatNumber(n.number)}`).join(' · ');
+      let reviewPurchase;
+      try { reviewPurchase = db.markSellerPaymentClaimed(purchaseId, telegramId); }
+      catch (error) { return bot.sendMessage(telegramId, `⚠️ ${error.message}`); }
+      const numbers = reviewPurchase.numbers.map((n) => `${n.pool} ETB #${formatNumber(n.number)}`).join(' · ');
       await notifyAdmins(`💳 SELLER SALE PAYMENT REVIEW\n\nSeller: ${seller.display_name}\nBuyer: ${purchase.buyer_name}\nPhone: ${purchase.buyer_phone}\nPackage: ${purchase.package_type}\nAmount: ${purchase.amount_etb} ETB\nNumbers: ${numbers || '-'}\n\nSeller says the buyer paid. Confirm only after FinoteBirhan has actually received/verified the money.`, inlineKeyboard([[
         { text: '✅ Approve payment', callback_data: `admin_pay_ok:${purchase.id}` },
         { text: '❌ Reject', callback_data: `admin_pay_no:${purchase.id}` }
       ]]));
       await bot.sendMessage(telegramId, tr(telegramId, '⏳ ክፍያው ለአስተዳዳሪ ማረጋገጫ ተልኳል። እስኪፈቀድ ድረስ ትኬቱ SOLD አይሆንም።', '⏳ Sent for FinoteBirhan admin payment approval. The ticket will not become SOLD until approved.'));
       return;
-      try {
-        const paid = db.confirmPurchase(purchaseId, telegramId, { note: `Marked SOLD by ticket seller ${seller.display_name}` });
-        await bot.sendMessage(telegramId, tr(telegramId, `✅ ተሽጧል — ${paid.buyer_name}\n${paid.buyer_phone}\n\nዲጂታል ትኬቱ ከታች ነው። ለገዢው ማስተላለፍ ይችላሉ።`, `✅ SOLD — ${paid.buyer_name}\n${paid.buyer_phone}\n\nThe digital ticket is below. You can forward it to the buyer.`));
-        await sendIssuedTickets(telegramId, purchaseId);
-        if (paid.linked_telegram_id && paid.linked_telegram_id !== telegramId) {
-          await safeSend(paid.linked_telegram_id, `✅ Your FinoteBirhan ticket bought through ${seller.display_name} has been confirmed and linked to your account.`);
-          await sendIssuedTickets(paid.linked_telegram_id, purchaseId);
-        }
-      } catch (error) {
-        await bot.sendMessage(telegramId, `⚠️ ${error.message}`);
-      }
     } else {
       db.cancelPurchase(purchaseId, telegramId, `Cancelled by ticket seller ${seller.display_name}`);
       await bot.sendMessage(telegramId, tr(telegramId, '❌ ሽያጩ ተሰርዟል። የተያዘው ቁጥር እንደገና ይገኛል።', '❌ Sale cancelled. The reserved number is available again.'));
@@ -1127,6 +1119,20 @@ async function handleCallback(query) {
     if (!db.isAdmin(telegramId)) return bot.answerCallbackQuery(query.id, 'Admin only.', true).catch(() => {});
 
     if (data === 'admin_dashboard') return showAdminDashboard(telegramId);
+    if (data === 'admin_revenue_reconcile') return showRevenueReconciliation(telegramId);
+    if (data.startsWith('admin_receipt_yes:') || data.startsWith('admin_receipt_no:')) {
+      const purchaseId = data.split(':').slice(1).join(':');
+      const status = data.startsWith('admin_receipt_yes:') ? 'confirmed' : 'not_received';
+      try {
+        const updated = db.setReceiptReconciliation(purchaseId, telegramId, status);
+        await bot.sendMessage(telegramId, status === 'confirmed'
+          ? `✅ Receipt confirmed: ${updated.amount_etb} ETB · ${updated.id}`
+          : `🚫 Marked as not received: ${updated.amount_etb} ETB · ${updated.id}`);
+      } catch (error) {
+        await bot.sendMessage(telegramId, `⚠️ ${error.message}`);
+      }
+      return showRevenueReconciliation(telegramId);
+    }
     if (data === 'admin_payment_accounts') return showPaymentAccounts(telegramId);
     if (data === 'admin_payment_add') return startAdminPaymentAccountAdd(telegramId);
     if (data.startsWith('admin_payment_edit:')) return startAdminPaymentAccountEdit(telegramId, Number(data.split(':')[1]));
@@ -1254,8 +1260,10 @@ async function showAdminDashboard(telegramId) {
     ? `🛠 ፍኖተ ብርሃን አስተዳዳሪ
 Build: v${BOT_BUILD}
 
-💰 የተሸጡ ትኬቶች ጠቅላላ ዋጋ: ${s.revenue} ብር
-✅ የተከፈሉ ግዢዎች: ${s.paidCount}
+💵 የተረጋገጠ የገባ ገንዘብ: ${s.revenue} ብር (${s.confirmedReceiptCount})
+🎟 የተሸጡ ትኬቶች ጠቅላላ ዋጋ: ${s.salesValue} ብር (${s.paidCount})
+⚠️ ገንዘቡ ያልተመሳከረ: ${s.unreconciledRevenue} ብር (${s.unreconciledCount})
+🚫 እንዳልገባ የተመዘገበ: ${s.notReceivedRevenue} ብር (${s.notReceivedCount})
 👥 ተጠቃሚዎች: ${s.users}
 🚨 ሪከቨሪ የሚፈልጉ: ${recovery.attention}
 🧾 ትኬት ሻጮች: ${s.sellers}
@@ -1263,7 +1271,7 @@ Build: v${BOT_BUILD}
 🌐 በቦት በቀጥታ የተሸጠ: ${s.directRevenue} ብር (${s.directCount})
 🧾 በሻጮች የተመዘገበ: ${s.sellerRevenue} ብር (${s.sellerCount})
 📦 ሽያጭ በጥቅል: ${salesBreakdown}
-ℹ️ ገቢው የሚቆጠረው በጥቅል ዋጋ ነው፤ Bundle = 300 ብር። የ200/100/50 ዕጣ ቁጥሮችን ደምሮ ገቢ አይቆጠርም።
+ℹ️ SOLD ዋጋ በጥቅል ዋጋ ይቆጠራል፤ Bundle = 300 ብር። ነገር ግን ገቢ ውስጥ የሚገባው በVerify.et ወይም በአስተዳዳሪ በእውነት እንደደረሰ የተረጋገጠ ገንዘብ ብቻ ነው።
 
 ${poolLines}
 
@@ -1271,8 +1279,10 @@ ${poolLines}
     : `🛠 FinoteBirhan Admin
 Build: v${BOT_BUILD}
 
-Ticket sales value: ${s.revenue} ETB
-Paid purchases: ${s.paidCount}
+Confirmed money received: ${s.revenue} ETB (${s.confirmedReceiptCount})
+Sold ticket value: ${s.salesValue} ETB (${s.paidCount})
+Needs receipt reconciliation: ${s.unreconciledRevenue} ETB (${s.unreconciledCount})
+Marked not received: ${s.notReceivedRevenue} ETB (${s.notReceivedCount})
 Customers: ${s.users}
 Recovery attention: ${recovery.attention}
 Ticket sellers: ${s.sellers}
@@ -1280,12 +1290,13 @@ Ticket sellers: ${s.sellers}
 Direct bot sales: ${s.directRevenue} ETB (${s.directCount})
 Seller-entered sales: ${s.sellerRevenue} ETB (${s.sellerCount})
 Sales by package: ${salesBreakdown}
-Revenue uses the package price only (Bundle = 300 ETB). Draw/pool face values are inventory, not revenue.
+Sold value uses the package price only (Bundle = 300 ETB). Confirmed money received counts only receipts verified by Verify.et or an administrator; historical SOLD rows remain unreconciled until checked.
 
 ${poolLines}
 
 🚨 Recovery includes all unresolved purchases plus reservations that expired during the last 7 days. Recent expired: ${recovery.recentExpired}.`,
     { reply_markup: inlineKeyboard([
+      [{ text: am ? '💵 ገቢ አረጋግጥ' : '💵 Reconcile Revenue', callback_data: 'admin_revenue_reconcile' }],
       [{ text: am ? '📊 ትኬት ቁጥሮች' : '📊 Pools', callback_data: 'admin_pools' }, { text: '🚨 Recovery', callback_data: 'admin_payments' }],
       [{ text: am ? '🤝 ሻጮች' : '🤝 Sellers', callback_data: 'admin_sellers' }, { text: am ? '🏆 ዕጣ' : '🏆 Draw', callback_data: 'admin_draw' }],
       [{ text: am ? '💳 የክፍያ አካውንቶች' : '💳 Transfer Accounts', callback_data: 'admin_payment_accounts' }],
@@ -1293,6 +1304,48 @@ ${poolLines}
       [{ text: am ? '🗑 ሁሉንም ዳታ አጥፋ' : '🗑 Force Clear Data', callback_data: 'admin_forceclear' }]
     ]) }
   );
+}
+
+async function showRevenueReconciliation(telegramId) {
+  if (!db.isAdmin(telegramId)) return bot.sendMessage(telegramId, 'Admin access required.');
+  const am = langOf(telegramId) !== 'en';
+  const s = db.dashboardStats();
+  const queue = db.unreconciledPaidPurchases(8);
+  await bot.sendMessage(telegramId, am
+    ? `💵 የገቢ ማረጋገጫ
+
+✅ በእውነት እንደገባ የተረጋገጠ: ${s.confirmedRevenue} ብር (${s.confirmedReceiptCount})
+⚠️ ገና ያልተመሳከረ: ${s.unreconciledRevenue} ብር (${s.unreconciledCount})
+🚫 እንዳልገባ የተመዘገበ: ${s.notReceivedRevenue} ብር (${s.notReceivedCount})
+
+SOLD መሆኑ ብቻ ገንዘቡ ገብቷል ማለት አይደለም። ያረጋገጡትን ብቻ ✅ ይጫኑ።`
+    : `💵 Revenue reconciliation
+
+Confirmed received: ${s.confirmedRevenue} ETB (${s.confirmedReceiptCount})
+Unreconciled historical SOLD: ${s.unreconciledRevenue} ETB (${s.unreconciledCount})
+Marked not received: ${s.notReceivedRevenue} ETB (${s.notReceivedCount})
+
+A SOLD ticket is not proof that money reached FinoteBirhan. Confirm only transactions you can verify in the real account/cash records.`,
+    { reply_markup: inlineKeyboard([[{ text: am ? '⬅️ ዳሽቦርድ' : '⬅️ Dashboard', callback_data: 'admin_dashboard' }]]) }
+  );
+  if (!queue.length) return;
+  for (const purchase of queue) {
+    const source = purchase.source === 'seller' ? `Seller${purchase.seller_name ? ` · ${purchase.seller_name}` : ''}` : 'Direct bot';
+    await bot.sendMessage(telegramId,
+      `#${purchase.id}
+${purchase.amount_etb} ETB · ${packageLabel(purchase.package_type)}
+${source}
+Buyer: ${purchase.buyer_name}
+Numbers: ${purchase.numbers || '-'}
+Paid/SOLD at: ${purchase.paid_at || purchase.created_at}
+
+Did FinoteBirhan actually receive this money?`,
+      { reply_markup: inlineKeyboard([[
+        { text: '✅ Received', callback_data: `admin_receipt_yes:${purchase.id}` },
+        { text: '🚫 Not received', callback_data: `admin_receipt_no:${purchase.id}` }
+      ]]) }
+    );
+  }
 }
 
 async function showPaymentAccounts(telegramId) {

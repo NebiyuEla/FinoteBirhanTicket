@@ -13,7 +13,7 @@ try {
 import { addMinutesIso, amountForPackage, formatNumber, normalizeNameForCompare, normalizePhone, nowIso, packagePools, randomToken, sha256, shortCode } from './utils.js';
 
 export class TicketDatabase {
-  constructor(dbPath, { reservationMinutes = 30, manualReviewMinutes = 30 } = {}) {
+  constructor(dbPath, { reservationMinutes = 60, manualReviewMinutes = 60 } = {}) {
     this.dbPath = dbPath;
     this.reservationMinutes = reservationMinutes;
     this.manualReviewMinutes = manualReviewMinutes;
@@ -213,6 +213,11 @@ export class TicketDatabase {
     this.ensureColumn('purchases', 'payment_account_id', 'INTEGER');
     this.ensureColumn('purchases', 'payment_account_name', 'TEXT');
     this.ensureColumn('purchases', 'payment_account_number', 'TEXT');
+    this.ensureColumn('purchases', 'receipt_status', "TEXT NOT NULL DEFAULT 'unreconciled'");
+    this.ensureColumn('purchases', 'receipt_verified_at', 'TEXT');
+    this.ensureColumn('purchases', 'receipt_verified_by', 'INTEGER');
+    this.ensureColumn('purchases', 'receipt_verification_method', 'TEXT');
+    this.db.exec(`UPDATE purchases SET receipt_status='unreconciled' WHERE receipt_status IS NULL OR receipt_status NOT IN ('confirmed','not_received','unreconciled')`);
     // Canonicalize historical purchase amounts from the package type. Revenue must
     // never be reconstructed by summing sold draw/pool face values because a
     // 300 ETB bundle issues 200 + 100 + 50 draw numbers (350 nominal).
@@ -681,17 +686,42 @@ export class TicketDatabase {
 
   salesOpen() { return this.getSetting('sales_open') === 'true'; }
 
+  reconcileReservationLocksInCurrentTransaction(now = nowIso()) {
+    // A paid purchase must never remain as a temporary reservation.
+    this.db.prepare(`UPDATE ticket_numbers
+      SET status='sold', reserved_until=NULL,
+          sold_at=COALESCE(sold_at,(SELECT paid_at FROM purchases p WHERE p.id=ticket_numbers.purchase_id))
+      WHERE status='reserved' AND purchase_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM purchases p WHERE p.id=ticket_numbers.purchase_id AND p.status='paid')`).run();
+
+    // Release orphaned locks and locks belonging to terminal unpaid purchases.
+    this.db.prepare(`UPDATE ticket_numbers
+      SET status='available',purchase_id=NULL,reserved_until=NULL,buyer_telegram_id=NULL,seller_id=NULL,sold_at=NULL
+      WHERE status='reserved' AND (
+        purchase_id IS NULL OR
+        NOT EXISTS (SELECT 1 FROM purchases p WHERE p.id=ticket_numbers.purchase_id) OR
+        EXISTS (SELECT 1 FROM purchases p WHERE p.id=ticket_numbers.purchase_id AND p.status IN ('expired','rejected','cancelled'))
+      )`).run();
+
+    // Payment evidence or a seller's "Buyer paid" claim protects the number until an admin resolves it.
+    const expired = this.db.prepare(`SELECT id FROM purchases
+      WHERE status IN ('reserved','awaiting_proof','verification_pending','seller_review','manual_review')
+        AND submitted_at IS NULL
+        AND reserved_until < ?`).all(now);
+    for (const row of expired) {
+      this.db.prepare(`UPDATE ticket_numbers SET status='available',purchase_id=NULL,reserved_until=NULL,buyer_telegram_id=NULL,seller_id=NULL,sold_at=NULL WHERE purchase_id=? AND status='reserved'`).run(row.id);
+      this.db.prepare(`UPDATE purchases SET status='expired', note=TRIM(COALESCE(note,'') || ' [auto-expired unpaid reservation]') WHERE id=?`).run(row.id);
+    }
+    return expired.length;
+  }
+
   releaseExpiredReservations() {
     const now = nowIso();
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      const expired = this.db.prepare(`SELECT id FROM purchases WHERE status IN ('reserved','awaiting_proof','verification_pending','seller_review','manual_review') AND reserved_until < ?`).all(now);
-      for (const row of expired) {
-        this.db.prepare(`UPDATE ticket_numbers SET status='available',purchase_id=NULL,reserved_until=NULL,buyer_telegram_id=NULL,seller_id=NULL WHERE purchase_id=? AND status='reserved'`).run(row.id);
-        this.db.prepare(`UPDATE purchases SET status='expired', note=COALESCE(note,'') || ' [auto-expired]' WHERE id=?`).run(row.id);
-      }
+      const released = this.reconcileReservationLocksInCurrentTransaction(now);
       this.db.exec('COMMIT');
-      return expired.length;
+      return released;
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
@@ -706,7 +736,7 @@ export class TicketDatabase {
     return out;
   }
 
-  createWebSession(telegramId, sellerId = null, ttlMinutes = 30) {
+  createWebSession(telegramId, sellerId = null, ttlMinutes = 60) {
     const token = randomToken(18);
     const now = nowIso();
     this.db.prepare('INSERT INTO web_sessions(token,telegram_id,seller_id,expires_at,created_at) VALUES(?,?,?,?,?)')
@@ -823,6 +853,32 @@ export class TicketDatabase {
     }
   }
 
+  markSellerPaymentClaimed(purchaseId, sellerTelegramId) {
+    const seller = this.db.prepare(`SELECT * FROM sellers WHERE telegram_id=? AND status='approved'`).get(sellerTelegramId);
+    const purchase = this.getPurchase(purchaseId);
+    if (!seller || !purchase || purchase.seller_id !== seller.id || purchase.source !== 'seller') throw new Error('Seller sale not found.');
+    if (purchase.status === 'paid') return purchase;
+    if (!['seller_review','awaiting_proof','manual_review'].includes(purchase.status)) throw new Error(`Sale cannot be submitted from status ${purchase.status}.`);
+    const now = nowIso();
+    const protectedUntil = addMinutesIso(this.manualReviewMinutes);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const locks = this.db.prepare(`SELECT status,purchase_id FROM ticket_numbers WHERE purchase_id=?`).all(purchaseId);
+      if (locks.length !== purchase.numbers.length || locks.some((row) => row.status !== 'reserved' || row.purchase_id !== purchaseId)) {
+        throw new Error('Reservation is no longer intact. Ask an administrator to inspect Recovery.');
+      }
+      this.db.prepare(`UPDATE purchases SET status='manual_review',submitted_at=COALESCE(submitted_at,?),reserved_until=?,note=TRIM(COALESCE(note,'') || ' [seller reported buyer paid]') WHERE id=?`)
+        .run(now, protectedUntil, purchaseId);
+      this.db.prepare(`UPDATE ticket_numbers SET reserved_until=? WHERE purchase_id=? AND status='reserved'`).run(protectedUntil, purchaseId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    this.log(sellerTelegramId, 'seller_sale.payment_claimed', 'purchase', purchaseId, {});
+    return this.getPurchase(purchaseId);
+  }
+
   findRegisteredBuyer(buyerName, buyerPhone) {
     const phone = normalizePhone(buyerPhone);
     if (phone) {
@@ -836,11 +892,7 @@ export class TicketDatabase {
   }
 
   releaseExpiredReservationsInCurrentTransaction(now) {
-    const expired = this.db.prepare(`SELECT id FROM purchases WHERE status IN ('reserved','awaiting_proof','verification_pending','seller_review','manual_review') AND reserved_until < ?`).all(now);
-    for (const row of expired) {
-      this.db.prepare(`UPDATE ticket_numbers SET status='available',purchase_id=NULL,reserved_until=NULL,buyer_telegram_id=NULL,seller_id=NULL WHERE purchase_id=? AND status='reserved'`).run(row.id);
-      this.db.prepare(`UPDATE purchases SET status='expired', note=COALESCE(note,'') || ' [auto-expired]' WHERE id=?`).run(row.id);
-    }
+    return this.reconcileReservationLocksInCurrentTransaction(now);
   }
 
   getPurchase(id) {
@@ -889,7 +941,7 @@ export class TicketDatabase {
     return this.getPurchase(purchaseId);
   }
 
-  confirmPurchase(purchaseId, reviewerId, { verificationPayload = null, note = null } = {}) {
+  confirmPurchase(purchaseId, reviewerId, { verificationPayload = null, note = null, receiptVerified = false, receiptMethod = null } = {}) {
     const purchase = this.getPurchase(purchaseId);
     if (!purchase) throw new Error('Purchase not found.');
     if (purchase.status === 'paid') return purchase;
@@ -898,6 +950,8 @@ export class TicketDatabase {
       throw new Error('Seller-originated sales require FinoteBirhan admin payment approval before tickets can be marked sold.');
     }
     const now = nowIso();
+    const receiptConfirmed = receiptVerified === true || this.isAdmin(reviewerId);
+    const resolvedReceiptMethod = receiptMethod || (this.isAdmin(reviewerId) ? 'admin_approval' : (receiptVerified ? 'system_verification' : null));
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const locks = this.db.prepare('SELECT pool,number,status,purchase_id FROM ticket_numbers WHERE purchase_id=?').all(purchaseId);
@@ -906,6 +960,10 @@ export class TicketDatabase {
       }
       this.db.prepare(`UPDATE purchases SET status='paid',paid_at=?,reviewed_by=?,verification_payload=COALESCE(?,verification_payload),note=COALESCE(?,note) WHERE id=?`)
         .run(now, reviewerId ?? null, verificationPayload ? JSON.stringify(verificationPayload) : null, note, purchaseId);
+      if (receiptConfirmed) {
+        this.db.prepare(`UPDATE purchases SET receipt_status='confirmed',receipt_verified_at=?,receipt_verified_by=?,receipt_verification_method=? WHERE id=?`)
+          .run(now, reviewerId ?? null, resolvedReceiptMethod, purchaseId);
+      }
       this.db.prepare(`UPDATE ticket_numbers SET status='sold',reserved_until=NULL,sold_at=? WHERE purchase_id=?`).run(now, purchaseId);
       const insertTicket = this.db.prepare(`INSERT INTO tickets(id,purchase_id,pool,number,owner_telegram_id,owner_name,owner_phone,seller_id,issued_at,linked_telegram_id) VALUES(?,?,?,?,?,?,?,?,?,?)`);
       for (const num of purchase.numbers) {
@@ -1157,10 +1215,42 @@ export class TicketDatabase {
     return before;
   }
 
+  setReceiptReconciliation(purchaseId, adminId, receiptStatus) {
+    if (!this.isAdmin(adminId)) throw new Error('Admin access required.');
+    if (!['confirmed','not_received','unreconciled'].includes(receiptStatus)) throw new Error('Invalid receipt status.');
+    const purchase = this.getPurchase(purchaseId);
+    if (!purchase) throw new Error('Purchase not found.');
+    if (purchase.status !== 'paid') throw new Error('Only paid/sold purchases can be reconciled.');
+    const now = nowIso();
+    if (receiptStatus === 'confirmed') {
+      this.db.prepare(`UPDATE purchases SET receipt_status='confirmed',receipt_verified_at=?,receipt_verified_by=?,receipt_verification_method='admin_reconciliation' WHERE id=?`)
+        .run(now, adminId, purchaseId);
+    } else {
+      this.db.prepare(`UPDATE purchases SET receipt_status=?,receipt_verified_at=NULL,receipt_verified_by=?,receipt_verification_method='admin_reconciliation' WHERE id=?`)
+        .run(receiptStatus, adminId, purchaseId);
+    }
+    this.log(adminId, 'purchase.receipt_reconciled', 'purchase', purchaseId, { receiptStatus });
+    return this.getPurchase(purchaseId);
+  }
+
+  unreconciledPaidPurchases(limit = 12) {
+    const safeLimit = Math.min(50, Math.max(1, Number(limit) || 12));
+    return this.db.prepare(`SELECT p.*, GROUP_CONCAT(pn.pool || ':' || printf('%03d',pn.number), ' · ') AS numbers,
+      s.display_name AS seller_name
+      FROM purchases p
+      LEFT JOIN purchase_numbers pn ON pn.purchase_id=p.id
+      LEFT JOIN sellers s ON s.id=p.seller_id
+      WHERE p.status='paid' AND COALESCE(p.receipt_status,'unreconciled')='unreconciled'
+      GROUP BY p.id ORDER BY COALESCE(p.paid_at,p.created_at) ASC LIMIT ?`).all(safeLimit);
+  }
+
   dashboardStats() {
     this.releaseExpiredReservations();
     const users = this.db.prepare(`SELECT COUNT(*) AS c FROM users WHERE registration_state='complete'`).get().c;
     const paid = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid'`).get();
+    const confirmedReceipts = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid' AND receipt_status='confirmed'`).get();
+    const unreconciledReceipts = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid' AND COALESCE(receipt_status,'unreconciled')='unreconciled'`).get();
+    const notReceivedReceipts = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid' AND receipt_status='not_received'`).get();
     const direct = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid' AND source='direct'`).get();
     const platform = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue
       FROM purchases WHERE status='paid' AND COALESCE(payment_target,'finote')='finote'`).get();
@@ -1183,7 +1273,14 @@ export class TicketDatabase {
       users,
       paidCount: paid.c,
       grossSalesValue: paid.revenue,
-      revenue: paid.revenue,
+      salesValue: paid.revenue,
+      revenue: confirmedReceipts.revenue,
+      confirmedRevenue: confirmedReceipts.revenue,
+      confirmedReceiptCount: confirmedReceipts.c,
+      unreconciledRevenue: unreconciledReceipts.revenue,
+      unreconciledCount: unreconciledReceipts.c,
+      notReceivedRevenue: notReceivedReceipts.revenue,
+      notReceivedCount: notReceivedReceipts.c,
       platformRevenue: platform.revenue,
       platformPaidCount: platform.c,
       directCount: direct.c,
