@@ -45,10 +45,9 @@ test('core recovery queue includes recent expired purchases and can safely resto
   const { db, dir } = makeDb();
   const purchase = db.reservePurchase({ telegramId: 1, packageType: '50', selectedNumbers: { 50: 87 } });
   db.submitPaymentProof(purchase.id, { reference: 'CORE-RECOVERY-87' });
-  db.db.prepare("UPDATE purchases SET reserved_until='2000-01-01T00:00:00.000Z' WHERE id=?").run(purchase.id);
-  db.db.prepare("UPDATE ticket_numbers SET reserved_until='2000-01-01T00:00:00.000Z' WHERE purchase_id=?").run(purchase.id);
-  db.releaseExpiredReservations();
-  db.db.prepare('UPDATE purchases SET reserved_until=? WHERE id=?').run(new Date().toISOString(), purchase.id);
+  const legacyExpiredAt = new Date().toISOString();
+  db.db.prepare(`UPDATE purchases SET status='expired',reserved_until=? WHERE id=?`).run(legacyExpiredAt, purchase.id);
+  db.db.prepare(`UPDATE ticket_numbers SET status='available',purchase_id=NULL,reserved_until=NULL,buyer_telegram_id=NULL,seller_id=NULL WHERE purchase_id=?`).run(purchase.id);
 
   assert.ok(db.recoveryQueue().some((row) => row.id === purchase.id && row.status === 'expired'));
   const paid = db.recoverExpiredPurchase(purchase.id, 999, { note: 'Recovered after outage.' });
@@ -59,7 +58,7 @@ test('core recovery queue includes recent expired purchases and can safely resto
 
 test('build exposes an explicit /version command and Recovery admin UI', () => {
   const source = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
-  assert.match(source, /const BOT_BUILD = '1\.3\.6';/);
+  assert.match(source, /const BOT_BUILD = '1\.3\.7';/);
   assert.match(source, /if \(cmd === '\/version'\)/);
   assert.match(source, /Recovery attention:/);
   assert.match(source, /text: '🚨 Recovery'/);

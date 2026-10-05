@@ -36,7 +36,6 @@ function expire(db, purchaseId) {
 test('Recovery queue includes unresolved seller reviews and recently expired payments', () => {
   const { db, dir } = makeDb();
   const direct = db.reservePurchase({ telegramId: 1, packageType: '200', selectedNumbers: { 200: 61 } });
-  db.submitPaymentProof(direct.id, { reference: 'RECOVERY-REF-61' });
   expire(db, direct.id);
 
   const sellerSale = db.reserveSellerSale({
@@ -61,11 +60,13 @@ test('Admin can safely recover and approve an expired payment when the original 
   const { db, dir } = makeDb();
   const purchase = db.reservePurchase({ telegramId: 1, packageType: '50', selectedNumbers: { 50: 63 } });
   db.submitPaymentProof(purchase.id, { reference: 'RECOVERY-REF-63' });
-  expire(db, purchase.id);
+  const legacyExpiredAt = new Date().toISOString();
+  db.db.prepare(`UPDATE purchases SET status='expired',reserved_until=? WHERE id=?`).run(legacyExpiredAt, purchase.id);
+  db.db.prepare(`UPDATE ticket_numbers SET status='available',purchase_id=NULL,reserved_until=NULL,buyer_telegram_id=NULL,seller_id=NULL WHERE purchase_id=?`).run(purchase.id);
 
   const before = db.assessRecoveryPurchase(purchase.id);
   assert.equal(before.availableForRestore, true);
-  const paid = db.confirmPurchase(purchase.id, 999, { note: 'Approved from Recovery after outage.' });
+  const paid = db.recoverExpiredPurchase(purchase.id, 999, { note: 'Approved from Recovery after outage.' });
   assert.equal(paid.status, 'paid');
   assert.equal(db.ticketsForPurchase(purchase.id).length, 1);
   const number = db.getTicketNumberDetails(50, 63);
@@ -77,10 +78,12 @@ test('Recovery approval is blocked if the expired number was taken by another pu
   const { db, dir } = makeDb();
   const first = db.reservePurchase({ telegramId: 1, packageType: '50', selectedNumbers: { 50: 64 } });
   db.submitPaymentProof(first.id, { reference: 'RECOVERY-REF-64' });
-  expire(db, first.id);
+  const legacyExpiredAt = new Date().toISOString();
+  db.db.prepare(`UPDATE purchases SET status='expired',reserved_until=? WHERE id=?`).run(legacyExpiredAt, first.id);
+  db.db.prepare(`UPDATE ticket_numbers SET status='available',purchase_id=NULL,reserved_until=NULL,buyer_telegram_id=NULL,seller_id=NULL WHERE purchase_id=?`).run(first.id);
 
   const second = db.reservePurchase({ telegramId: 3, packageType: '50', selectedNumbers: { 50: 64 } });
-  assert.throws(() => db.confirmPurchase(first.id, 999, { note: 'Should be blocked' }), /no longer available|cannot recover/i);
+  assert.throws(() => db.recoverExpiredPurchase(first.id, 999, { note: 'Should be blocked' }), /no longer available|cannot recover/i);
   assert.equal(db.getPurchase(first.id).status, 'expired');
   assert.equal(db.getPurchase(second.id).status, 'awaiting_proof');
   const number = db.getTicketNumberDetails(50, 64);

@@ -55,8 +55,8 @@ export const config = {
   verifyEtApiKey: process.env.VERIFY_ET_API_KEY?.trim() || '',
   verifyEtBaseUrl: (process.env.VERIFY_ET_BASE_URL?.trim() || 'https://verify.et').replace(/\/$/, ''),
   dbPath: process.env.DB_PATH?.trim() || './data/finotebirhan.sqlite',
-  reservationMinutes: Math.max(30, asInt('RESERVATION_MINUTES', 30)),
-  manualReviewMinutes: asInt('MANUAL_REVIEW_MINUTES', 30),
+  reservationMinutes: Math.max(60, asInt('RESERVATION_MINUTES', 60)),
+  manualReviewMinutes: Math.max(60, asInt('MANUAL_REVIEW_MINUTES', 60)),
   pollTimeoutSeconds: asInt('POLL_TIMEOUT_SECONDS', 125)
 };
 
