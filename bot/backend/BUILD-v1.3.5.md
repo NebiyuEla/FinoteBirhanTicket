@@ -2,6 +2,6 @@
 
 Core navigation/state hardening and outage Recovery admin UI.
 
-Seller accounting fix: platform Revenue now follows the actual payment target. Seller/cash-collected sales are excluded from Revenue and reported separately by package count and amount. Verified source logic commit: 3c925ff27ab2792bfcbef787933016538ca9dbd9.
+Revenue correction: Revenue now equals the total value of all paid/sold ticket purchases, regardless of whether FinoteBirhan or a seller collected the payment. FinoteBirhan-received money remains a separate accounting figure. Normal ticket reservations now have a minimum 30-minute timeout. Verified source logic commit: 5a43f680e83f96335db40f1b90445fdb88ce2eb6.
 
 This file triggers the verified DISCloud packaging workflow.
