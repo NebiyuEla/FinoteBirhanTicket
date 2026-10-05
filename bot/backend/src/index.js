@@ -958,12 +958,24 @@ ${updated.account_number}`);
   }
 }
 
+function formatPackageBreakdown(rows, am = false) {
+  const byType = new Map((rows || []).map((row) => [String(row.package_type), row]));
+  const types = [['bundle', 'Bundle'], ['200', '200'], ['100', '100'], ['50', '50']];
+  return types.map(([key, label]) => {
+    const row = byType.get(key);
+    const sales = Number(row?.sales || 0);
+    const amount = Number(row?.amount || 0);
+    return `${label}: ${sales} (${amount} ${am ? 'ብር' : 'ETB'})`;
+  }).join(' · ');
+}
+
 async function showSellerPanel(telegramId) {
   const seller = db.getSellerByTelegram(telegramId);
   const am = langOf(telegramId) !== 'en';
   if (!seller || seller.status !== 'approved') return bot.sendMessage(telegramId, am ? 'የትኬት ሻጭ ፈቃድ በአስተዳዳሪ ብቻ ይሰጣል።' : 'Ticket Seller access is assigned by an administrator.');
   const stats = db.sellerStats(seller.id);
   const recent = db.recentSellerSales(seller.id, 6);
+  const packageBreakdown = formatPackageBreakdown(stats.packages, am);
   const account = db.sellerHasPaymentAccount(seller.id)
     ? `${seller.payment_provider}
 ${seller.account_name}
@@ -981,7 +993,9 @@ ${seller.phone}
 👥 ገዢዎች: ${stats.customers}
 ✅ የተከፈሉ ሽያጮች: ${stats.paidCount}
 🎟 የወጡ ትኬቶች: ${stats.tickets}
-💰 ጠቅላላ ሽያጭ: ${stats.revenue} ብር
+💵 በሻጭ/ጥሬ ገንዘብ የተሰበሰበ: ${stats.sellerCashRevenue} ብር (${stats.sellerCashCount})
+🏦 ወደ ፍኖተ ብርሃን የተከፈለ: ${stats.finotePaidRevenue} ብር (${stats.finotePaidCount})
+📦 ሽያጭ በጥቅል: ${packageBreakdown}
 ⏳ በመጠባበቅ ላይ: ${stats.pending}
 
 💳 የእርስዎ የክፍያ አካውንት
@@ -997,7 +1011,9 @@ ${seller.phone}
 Buyers: ${stats.customers}
 Sales: ${stats.paidCount}
 Tickets issued: ${stats.tickets}
-Collected: ${stats.revenue} ETB
+Seller/cash collected: ${stats.sellerCashRevenue} ETB (${stats.sellerCashCount})
+Paid to FinoteBirhan: ${stats.finotePaidRevenue} ETB (${stats.finotePaidCount})
+Sales by package: ${packageBreakdown}
 Pending: ${stats.pending}
 
 Your payment account
@@ -1229,6 +1245,7 @@ async function showAdminDashboard(telegramId) {
   if (!db.isAdmin(telegramId)) return bot.sendMessage(telegramId, am ? 'የአስተዳዳሪ ፈቃድ ያስፈልጋል።' : 'Admin access required.');
   const s = db.dashboardStats();
   const recovery = db.recoveryStats();
+  const sellerCashBreakdown = formatPackageBreakdown(s.sellerCashPackages, am);
   const poolLines = s.pools.map((p) => am ? `${p.pool} ብር: ${p.sold}/200 ተሽጧል · ${p.reserved} ተይዟል` : `${p.pool} ETB: ${p.sold}/200 sold · ${p.reserved} reserved`).join('\n');
   await bot.sendMessage(telegramId, am
     ? `🛠 ፍኖተ ብርሃን አስተዳዳሪ
@@ -1240,8 +1257,9 @@ Build: v${BOT_BUILD}
 🚨 ሪከቨሪ የሚፈልጉ: ${recovery.attention}
 🧾 ትኬት ሻጮች: ${s.sellers}
 
-ቀጥታ ሽያጭ: ${s.directRevenue} ብር (${s.directCount})
-በሻጭ የተመዘገበ: ${s.sellerRevenue} ብር (${s.sellerCount})
+🏦 ፍኖተ ብርሃን የተቀበለው: ${s.revenue} ብር (${s.platformPaidCount})
+💵 በሻጭ/ጥሬ ገንዘብ የተሰበሰበ: ${s.sellerCashRevenue} ብር (${s.sellerCashCount}) — በገቢ አይቆጠርም
+📦 የሻጭ ጥሬ ገንዘብ ሽያጭ በጥቅል: ${sellerCashBreakdown}
 
 ${poolLines}
 
@@ -1255,8 +1273,9 @@ Customers: ${s.users}
 Recovery attention: ${recovery.attention}
 Ticket sellers: ${s.sellers}
 
-Direct: ${s.directRevenue} ETB (${s.directCount})
-Seller-entered sales: ${s.sellerRevenue} ETB (${s.sellerCount})
+Received by FinoteBirhan: ${s.revenue} ETB (${s.platformPaidCount})
+Seller/cash collected: ${s.sellerCashRevenue} ETB (${s.sellerCashCount}) — excluded from Revenue
+Seller cash sales by package: ${sellerCashBreakdown}
 
 ${poolLines}
 

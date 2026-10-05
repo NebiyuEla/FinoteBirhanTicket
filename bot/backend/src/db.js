@@ -1149,7 +1149,14 @@ export class TicketDatabase {
     const users = this.db.prepare(`SELECT COUNT(*) AS c FROM users WHERE registration_state='complete'`).get().c;
     const paid = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid'`).get();
     const direct = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid' AND source='direct'`).get();
+    const platform = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue
+      FROM purchases WHERE status='paid' AND COALESCE(payment_target,'finote')='finote'`).get();
     const seller = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue FROM purchases WHERE status='paid' AND source='seller'`).get();
+    const sellerCash = this.db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(amount_etb),0) AS revenue
+      FROM purchases WHERE status='paid' AND source='seller' AND payment_target='seller'`).get();
+    const sellerCashPackages = this.db.prepare(`SELECT package_type, COUNT(*) AS sales, COALESCE(SUM(amount_etb),0) AS amount
+      FROM purchases WHERE status='paid' AND source='seller' AND payment_target='seller'
+      GROUP BY package_type`).all();
     const pending = this.db.prepare(`SELECT COUNT(*) AS c FROM purchases WHERE status IN ('verification_pending','seller_review','manual_review')`).get().c;
     const sellers = this.db.prepare(`SELECT COUNT(*) AS c FROM sellers WHERE status='approved'`).get().c;
     const pools = this.db.prepare(`SELECT pool,
@@ -1157,7 +1164,23 @@ export class TicketDatabase {
       SUM(CASE WHEN status='reserved' THEN 1 ELSE 0 END) AS reserved,
       SUM(CASE WHEN status='available' THEN 1 ELSE 0 END) AS available
       FROM ticket_numbers GROUP BY pool ORDER BY pool DESC`).all();
-    return { users, paidCount: paid.c, revenue: paid.revenue, directCount: direct.c, directRevenue: direct.revenue, sellerCount: seller.c, sellerRevenue: seller.revenue, pending, sellers, pools };
+    return {
+      users,
+      paidCount: paid.c,
+      grossSalesValue: paid.revenue,
+      revenue: platform.revenue,
+      platformPaidCount: platform.c,
+      directCount: direct.c,
+      directRevenue: direct.revenue,
+      sellerCount: seller.c,
+      sellerRevenue: seller.revenue,
+      sellerCashCount: sellerCash.c,
+      sellerCashRevenue: sellerCash.revenue,
+      sellerCashPackages,
+      pending,
+      sellers,
+      pools
+    };
   }
 
   sellerStats(sellerId) {
@@ -1167,7 +1190,27 @@ export class TicketDatabase {
     const pending = this.db.prepare(`SELECT COUNT(*) AS c FROM purchases WHERE seller_id=? AND status IN ('awaiting_proof','seller_review','manual_review')`).get(sellerId).c;
     const tickets = this.db.prepare(`SELECT COUNT(*) AS c FROM tickets WHERE seller_id=?`).get(sellerId).c;
     const customers = this.db.prepare(`SELECT COUNT(DISTINCT buyer_phone) AS c FROM purchases WHERE seller_id=? AND status='paid'`).get(sellerId).c;
-    return { seller, paidCount: paid.c, revenue: paid.revenue, pending, tickets, customers };
+    const sellerCash = this.db.prepare(`SELECT COUNT(*) AS c,COALESCE(SUM(amount_etb),0) AS revenue
+      FROM purchases WHERE seller_id=? AND status='paid' AND payment_target='seller'`).get(sellerId);
+    const finotePaid = this.db.prepare(`SELECT COUNT(*) AS c,COALESCE(SUM(amount_etb),0) AS revenue
+      FROM purchases WHERE seller_id=? AND status='paid' AND COALESCE(payment_target,'finote')='finote'`).get(sellerId);
+    const packages = this.db.prepare(`SELECT package_type, COUNT(*) AS sales, COALESCE(SUM(amount_etb),0) AS amount
+      FROM purchases WHERE seller_id=? AND status='paid'
+      GROUP BY package_type`).all(sellerId);
+    return {
+      seller,
+      paidCount: paid.c,
+      salesValue: paid.revenue,
+      revenue: paid.revenue,
+      sellerCashCount: sellerCash.c,
+      sellerCashRevenue: sellerCash.revenue,
+      finotePaidCount: finotePaid.c,
+      finotePaidRevenue: finotePaid.revenue,
+      packages,
+      pending,
+      tickets,
+      customers
+    };
   }
 
 
