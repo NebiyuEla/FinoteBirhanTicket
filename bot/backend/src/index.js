@@ -13,7 +13,7 @@ import {
 
 assertRuntimeConfig();
 
-const BOT_BUILD = '1.3.8';
+const BOT_BUILD = '1.3.9';
 
 const db = new TicketDatabase(config.dbPath, {
   reservationMinutes: config.reservationMinutes,
