@@ -173,7 +173,7 @@
   confirmBtn.addEventListener('click', () => {
     if (!snapshotIsFresh()) return show('error');
     if (!complete()) return;
-    if (!inlineTransport && (!keyboardTransport || typeof tg?.sendData !== 'function')) {
+    if (!((inlineTransport && mode === 'buyer') || (keyboardTransport && typeof tg?.sendData === 'function'))) {
       alertMini(lang === 'am'
         ? 'ይህ ገጽ በቀድሞ የቴሌግራም ቁልፍ ተከፍቷል። ወደ ቦቱ ተመልሰው “ትኬት ይግዙ” ይጫኑ፤ ከዚያ “ትኬቶችን ክፈት” የሚለውን የኪቦርድ ቁልፍ ይጫኑ።'
         : 'This ticket page was opened from an old Telegram button. Return to the bot, tap Buy Ticket, then use the Open live tickets keyboard button.');
