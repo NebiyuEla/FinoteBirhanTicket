@@ -9,12 +9,14 @@ test('buyer Mini App launches through a reply keyboard that supports sendData', 
   assert.ok(keyboard.keyboard[0][0].web_app);
   assert.equal(keyboard.keyboard[0][0].web_app.url, url);
   assert.equal(keyboard.inline_keyboard, undefined);
-  assert.equal(keyboard.keyboard[1][0].text, '🎟 Buy Ticket');
-  assert.equal(keyboard.keyboard[2].length, 2);
+  assert.equal(keyboard.keyboard.length, 1);
+  assert.equal(keyboard.keyboard[0][0].text, '🎟 Open live tickets');
+  assert.equal(keyboard.one_time_keyboard, true);
+  assert.equal(keyboard.is_persistent, undefined);
 });
 test('seller Mini App also uses supported keyboard transport', () => {
   const keyboard = ticketLauncherKeyboard({ url, lang: 'am', seller: true });
-  assert.equal(keyboard.keyboard[1][0].text, '🧾 ትኬት ይሽጡ');
+  assert.equal(keyboard.keyboard[0][0].text, '🧾 ትኬቶችን ክፈት');
   assert.equal(keyboard.keyboard[0][0].web_app.url, url);
 });
 test('legacy inline transport and insecure URLs cannot generate launcher', () => {
@@ -27,9 +29,8 @@ test('backend issues transport-verified reply keyboards, never inline webapp but
   assert.match(source, /reply_markup: ticketLauncherKeyboard\(\{ url/);
   assert.doesNotMatch(source, /reply_markup: inlineKeyboard\(\[\[\{ text: buttonText, web_app:/);
 });
-test('browser blocks stale inline launches before sendData is called', () => {
+test('restored original Mini App sends ticket selection data to bot', () => {
   const source = fs.readFileSync(new URL('../../../app.js', import.meta.url), 'utf8');
-  assert.match(source, /params\.get\('transport'\) === 'keyboard'/);
-  assert.match(source, /!keyboardTransport/);
+  assert.match(source, /snapshotIsFresh\(\)/);
   assert.match(source, /tg\.sendData\(JSON\.stringify\(payload\)\)/);
 });
