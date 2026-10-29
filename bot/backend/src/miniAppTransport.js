@@ -1,6 +1,6 @@
-// Telegram.WebApp.sendData works only when opened from a reply KeyboardButton
-// web_app. InlineKeyboardButton web_app can display the app but cannot submit
-// its selection to the bot as web_app_data.
+// Telegram WebApp.sendData requires a reply-keyboard web_app launch.
+// Keep the original bot menu intact: this is a temporary one-button launcher,
+// not a replacement navigation menu. sendMainMenu restores the original rows.
 export function ticketLauncherKeyboard({ url, lang = 'am', seller = false }) {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:' || parsed.searchParams.get('transport') !== 'keyboard') {
@@ -8,22 +8,12 @@ export function ticketLauncherKeyboard({ url, lang = 'am', seller = false }) {
   }
   const am = lang !== 'en';
   return {
-    keyboard: [
-      [{
-        text: am ? '🎟 ትኬቶችን ክፈት' : '🎟 Open live tickets',
-        web_app: { url }
-      }],
-      [{
-        text: seller ? (am ? '🧾 ትኬት ይሽጡ' : '🧾 Sell Tickets')
-          : (am ? '🎟 ትኬት ይግዙ' : '🎟 Buy Ticket')
-      }],
-      [
-        { text: am ? '🎫 የእኔ ትኬቶች' : '🎫 My Tickets' },
-        { text: am ? '🏆 ውጤት' : '🏆 Results' }
-      ]
-    ],
+    keyboard: [[{
+      text: seller ? (am ? '🧾 ትኬቶችን ክፈት' : '🧾 Open live tickets')
+        : (am ? '🎟 ትኬቶችን ክፈት' : '🎟 Open live tickets'),
+      web_app: { url }
+    }]],
     resize_keyboard: true,
-    is_persistent: true,
-    input_field_placeholder: am ? 'ትኬት ይምረጡ' : 'Choose your ticket'
+    one_time_keyboard: true
   };
 }
