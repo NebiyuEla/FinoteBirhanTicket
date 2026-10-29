@@ -34,3 +34,14 @@ test('restored original Mini App sends ticket selection data to bot', () => {
   assert.match(source, /snapshotIsFresh\(\)/);
   assert.match(source, /tg\.sendData\(JSON\.stringify\(payload\)\)/);
 });
+
+test('ticket confirmation refuses legacy inline Mini Apps before showing Sending', () => {
+  const source = fs.readFileSync(new URL('../../../app.js', import.meta.url), 'utf8');
+  assert.match(source, /params\.get\('transport'\) === 'keyboard'/);
+  assert.match(source, /!tg\?\.initDataUnsafe\?\.query_id/);
+  const handler = source.slice(source.indexOf("confirmBtn.addEventListener('click'"));
+  const guard = handler.indexOf("if (!keyboardTransport || typeof tg?.sendData !== 'function')");
+  const disabling = handler.indexOf('confirmBtn.disabled = true');
+  assert.ok(guard >= 0 && disabling > guard, 'invalid launches must be rejected before disabling the button');
+  assert.match(handler.slice(guard, disabling), /Open live tickets keyboard button/);
+});
