@@ -105,7 +105,18 @@
   loadTicketImages();
   applyLanguage();
 
-  if (!session || !tg?.sendData || !keyboardTransport || !snapshotIsFresh()) show('error');
+  if (!session || !tg?.sendData || !keyboardTransport || !snapshotIsFresh()) {
+    const reason = !session ? 'missing session'
+      : !tg?.sendData ? 'Telegram WebApp unavailable'
+      : !keyboardTransport ? 'wrong launch method'
+      : 'session timestamp expired or invalid';
+    const detail = document.querySelector('[data-screen="error"] p');
+    if (detail) detail.textContent = (lang === 'am'
+      ? 'ከቦቱ ውስጥ “ትኬት ይግዙ” ይጫኑ እና የተላከውን “ትኬቶችን ክፈት” ቁልፍ ይጠቀሙ።'
+      : 'In the bot, tap Buy Ticket, then use the new Open live tickets button.')
+      + ' (' + reason + ')';
+    show('error');
+  }
   else show(mode === 'seller' ? 'sellerCustomer' : 'ticket');
 
   document.getElementById('sellerContinue').addEventListener('click', () => {
