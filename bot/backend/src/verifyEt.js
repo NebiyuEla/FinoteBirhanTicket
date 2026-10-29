@@ -1,10 +1,21 @@
 import crypto from 'node:crypto';
 import { normalizeNameForCompare } from './utils.js';
 
+// Payment apps often share a sentence containing the official receipt link.
+// Extract only an actual HTTPS URL; do not accept arbitrary external URLs.
+export function extractPaymentReference(input) {
+  const text = String(input || '').trim();
+  const link = text.match(/https?:\/\/[^\s<>"'()]+/i);
+  return link ? link[0].replace(/[.,;!?\]\u1361\u1362]+$/u, '') : text;
+}
+
 export function parsePaymentReference(input) {
-  const raw = String(input || '').trim();
+  const raw = extractPaymentReference(input);
   if (!raw) throw new Error('Transaction reference is required.');
-  if (!/^https?:\/\//i.test(raw)) return { bank: null, reference: raw };
+  if (!/^https?:\/\//i.test(raw)) {
+    if (!/^[a-z0-9_-]{3,96}$/i.test(raw)) throw new Error('Send a valid transaction reference or official receipt link.');
+    return { bank: null, reference: raw };
+  }
 
   let url;
   try { url = new URL(raw); } catch { throw new Error('Invalid receipt URL.'); }
@@ -24,8 +35,11 @@ export function parsePaymentReference(input) {
 }
 
 export function looksLikePaymentReference(input) {
-  const value = String(input || '').trim();
-  if (/^https?:\/\//i.test(value)) return true;
+  const value = extractPaymentReference(input);
+  if (/^https?:\/\//i.test(value)) {
+    try { return ['transactioninfo.ethiotelecom.et','mbreciept.cbe.com.et','mbreceipt.cbe.com.et','apps.cbe.com.et'].includes(new URL(value).hostname.toLowerCase()); }
+    catch { return false; }
+  }
   return /^(?=[a-z0-9_-]{8,64}$)(?=.*[0-9])[a-z0-9_-]+$/i.test(value);
 }
 
@@ -85,6 +99,7 @@ export class VerifyEtClient {
     const payload = buildVerificationPayload({ provider, reference, accountNumber });
     const response = await fetch(this.baseUrl + '/api/verify?waitMs=5000', {
       method: 'POST',
+      signal: AbortSignal.timeout(15000),
       headers: {
         'content-type': 'application/json',
         'x-api-key': this.apiKey,
@@ -113,7 +128,8 @@ export class VerifyEtClient {
     const deadline = Date.now() + this.pollTimeoutSeconds * 1000;
     while (Date.now() < deadline) {
       const response = await fetch(`${this.baseUrl}/api/verify/${encodeURIComponent(requestId)}`, {
-        headers: { 'x-api-key': this.apiKey }
+        headers: { 'x-api-key': this.apiKey },
+        signal: AbortSignal.timeout(10000)
       });
       const body = await safeBody(response);
       if (!response.ok) return { success: false, message: body?.message || `Polling failed (${response.status})`, data: body?.data };
@@ -160,10 +176,24 @@ export class VerifyEtClient {
     const hasReceiverName = Boolean(expectedName && receivedName);
     const hasReceiverAccount = Boolean(expectedDigits.length >= 4 && receivedDigits.length >= 4);
 
-    if (record.settlementAccountMatch?.matched === false) {
+    const match = record.settlementAccountMatch;
+    // Verify.et reports no_registered_accounts when its *account registry* is
+    // empty. That is not a negative match against this purchase's destination.
+    // Use the verified receipt fields instead. A genuinely mismatching account
+    // or ambiguous result must still go to manual review.
+    if (match?.matched === false &&
+        !['no_registered_accounts', 'missing_receiver_account'].includes(String(match.reason || ''))) {
       return { outcome: 'manual_review', reason: 'The receipt does not match the intended payment account.', requestId, payload: body };
     }
-    if (!hasReceiverName && !hasReceiverAccount) {
+    const matchedDigits = String(match?.matchedSettlementAccount || '').replace(/\D/g, '');
+    const explicitlyMatchedAccount = match?.matched === true && !match.ambiguous &&
+      expectedDigits.length >= 4 && matchedDigits.length >= 4 &&
+      (expectedDigits.endsWith(matchedDigits) || matchedDigits.endsWith(expectedDigits) ||
+       expectedDigits.endsWith(matchedDigits.slice(-4)));
+    if (match?.matched === true && !explicitlyMatchedAccount) {
+      return { outcome: 'manual_review', reason: 'The verified settlement account does not match this ticket payment destination.', requestId, payload: body };
+    }
+    if (!hasReceiverName && !hasReceiverAccount && !explicitlyMatchedAccount) {
       return { outcome: 'manual_review', reason: 'Verified receipt has insufficient recipient details to confirm the payment destination.', requestId, payload: body };
     }
     if (hasReceiverName && !(receivedName.includes(expectedName) || expectedName.includes(receivedName))) {
