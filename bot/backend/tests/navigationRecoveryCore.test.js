@@ -58,7 +58,7 @@ test('core recovery queue includes recent expired purchases and can safely resto
 
 test('build exposes an explicit /version command and Recovery admin UI', () => {
   const source = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
-  assert.match(source, /const BOT_BUILD = '1\.3\.8';/);
+  assert.match(source, /const BOT_BUILD = '1\.3\.9';/);
   assert.match(source, /if \(cmd === '\/version'\)/);
   assert.match(source, /Recovery:/);
   assert.match(source, /text: '🚨 Recovery'/);
