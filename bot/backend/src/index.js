@@ -2,6 +2,7 @@ import { config, assertRuntimeConfig } from './config.js';
 import { TicketDatabase } from './db.js';
 import { TelegramBotApi, inlineKeyboard, replyKeyboard, removeKeyboard } from './telegram.js';
 import { VerifyEtClient, looksLikePaymentReference } from './verifyEt.js';
+import { deliverReceiptToAdmins } from './adminReceipt.js';
 import { generateTicketPng } from './ticketImage.js';
 import {
   amountForPackage, csvEscape, encodeUnavailableBitset, formatNumber, htmlEscape,
@@ -751,6 +752,15 @@ async function handlePaymentProof(message, purchase) {
 
   db.clearUserState(telegramId);
 
+  // Forward the original photo/document before Verify.et runs. A QR extracted
+  // into message.caption must never prevent the administrator seeing the image.
+  const receiptDelivery = await deliverReceiptToAdmins({
+    bot, adminIds: db.listAdmins(), purchase: updated, message
+  });
+  if (fileId && receiptDelivery.delivered === 0) {
+    console.error('[payment-receipt] No admin received screenshot for purchase', updated.id);
+  }
+
   if (updated.source === 'seller') {
     await bot.sendMessage(telegramId, tr(telegramId, '⏳ የክፍያ ማስረጃው ለፍኖተ ብርሃን አስተዳዳሪ ተልኳል። ክፍያው እስኪረጋገጥ ድረስ ትኬቱ SOLD አይሆንም።', '⏳ Payment proof sent to a FinoteBirhan administrator. The ticket will not become SOLD until the payment is approved.'));
     await notifyAdminsOfReview(updated, message);
@@ -793,6 +803,7 @@ async function verifyDirectPayment(purchase, telegramId, proofMessage) {
 
   if (result.outcome === 'approved') {
     db.confirmPurchase(purchase.id, null, { verificationPayload: result.payload, note: result.reason, receiptVerified: true, receiptMethod: 'verify.et' });
+    await notifyAdmins('✅ PAYMENT VERIFIED (Verify.et)\nPurchase: ' + purchase.id + '\nBuyer: ' + purchase.buyer_name + '\nAmount: ' + purchase.amount_etb + ' ETB');
     await bot.sendMessage(telegramId, tr(telegramId, '✅ ክፍያዎ ተረጋግጧል። ዲጂታል ትኬትዎ ዝግጁ ነው።', '✅ Payment verified. Your digital ticket is ready.'));
     await sendIssuedTickets(telegramId, purchase.id);
     return;
@@ -800,6 +811,7 @@ async function verifyDirectPayment(purchase, telegramId, proofMessage) {
 
   if (result.outcome === 'rejected') {
     db.rejectPurchase(purchase.id, null, result.reason);
+    await notifyAdmins('❌ PAYMENT VERIFICATION REJECTED\nPurchase: ' + purchase.id + '\nBuyer: ' + purchase.buyer_name + '\nReason: ' + result.reason);
     await bot.sendMessage(telegramId, tr(telegramId, `❌ ክፍያው ሊረጋገጥ አልቻለም: ${result.reason}\n\nየተያዘው ቁጥር ተለቋል።`, `❌ Payment could not be approved: ${result.reason}\n\nThe reserved number has been released.`));
     return;
   }
@@ -845,9 +857,8 @@ async function notifyAdminsOfReview(purchase, proofMessage = null) {
       `🧾 Payment needs admin action\n\nBuyer: ${purchase.buyer_name}\nPhone: ${purchase.buyer_phone}\nAmount: ${purchase.amount_etb} ETB\nNumbers: ${numbers}\nTransfer account: ${purchase.payment_provider || 'legacy/unknown'}${purchase.payment_account_name ? ` · ${purchase.payment_account_name}` : ''}${purchase.payment_account_number ? ` · ${purchase.payment_account_number}` : ''}\nReference: ${purchase.payment_reference || 'screenshot only'}\nReason: ${purchase.note || 'Verify.et could not process this automatically'}`,
       { reply_markup: inlineKeyboard(buttons) }
     );
-    if (proofMessage && (proofMessage.photo?.length || proofMessage.document)) {
-      try { await bot.copyMessage(adminId, proofMessage.chat.id, proofMessage.message_id); } catch {}
-    }
+    // Receipt screenshots are already delivered at submission, whether Verify.et
+    // approves, rejects, or returns manual review. Do not send duplicates here.
   }
 }
 
