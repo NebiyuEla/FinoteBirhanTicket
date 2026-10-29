@@ -9,6 +9,10 @@ on:
       - '.github/workflows/build-discloud-package.yml'
   workflow_dispatch:
 
+concurrency:
+  group: finotebirhan-discloud-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
