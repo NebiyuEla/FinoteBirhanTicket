@@ -1,7 +1,7 @@
 import { config, assertRuntimeConfig } from './config.js';
 import { TicketDatabase } from './db.js';
 import { TelegramBotApi, inlineKeyboard, replyKeyboard, removeKeyboard } from './telegram.js';
-import { VerifyEtClient, looksLikePaymentReference } from './verifyEt.js';
+import { VerifyEtClient, looksLikePaymentReference, extractPaymentReference, parsePaymentReference } from './verifyEt.js';
 import { ticketLauncherKeyboard } from './miniAppTransport.js';
 import { deliverReceiptToAdmins } from './adminReceipt.js';
 import { generateTicketPng } from './ticketImage.js';
@@ -226,7 +226,7 @@ async function handleUpdate(update) {
   if (message.photo?.length || message.document || looksLikePaymentReference(text)) {
     const purchase = db.getOpenPurchaseForUser(telegramId);
     if (purchase && purchase.source === 'direct' &&
-        ['awaiting_proof', 'manual_review'].includes(purchase.status)) {
+        ['awaiting_proof', 'manual_review', 'verification_pending'].includes(purchase.status)) {
       return handlePaymentProof(message, purchase);
     }
   }
@@ -753,7 +753,31 @@ async function handlePaymentProof(message, purchase) {
   const photo = message.photo?.at(-1)?.file_id || null;
   const document = message.document?.file_id || null;
   const fileId = photo || document;
-  const reference = text && !text.startsWith('/') ? text.slice(0, 300) : null;
+  // Telegram's Share action often adds explanatory text before a receipt URL.
+  // Keep only the official link (or a bare transaction number), not the text.
+  const rawReference = text && !text.startsWith('/') ? extractPaymentReference(text).slice(0, 300) : null;
+  let reference = rawReference;
+  if (reference) {
+    try {
+      parsePaymentReference(reference);
+    } catch (error) {
+      // A screenshot may have a normal caption rather than a transaction link.
+      // Keep forwarding that image to admins without submitting invalid text.
+      if (fileId) reference = null;
+      else {
+        await bot.sendMessage(telegramId, tr(telegramId,
+          'ትክክለኛ የTelebirr/CBE ደረሰኝ ሊንክ ወይም የግብይት ቁጥር ይላኩ።',
+          'Send a valid Telebirr/CBE receipt link or transaction reference.'));
+        return;
+      }
+    }
+  }
+  if (purchase.status === 'verification_pending') {
+    await bot.sendMessage(telegramId, tr(telegramId,
+      'ክፍያዎ በማረጋገጥ ላይ ነው። ለተመሳሳይ ትኬት ሁለተኛ ክፍያ አይላኩ።',
+      'Your payment is being checked. Please do not pay again for the same ticket.'));
+    return;
+  }
   if (!reference && !fileId) {
     await bot.sendMessage(telegramId, tr(telegramId, 'የግብይት ሊንክ/ማጣቀሻ ይላኩ ወይም የደረሰኝ ምስል ያስገቡ።', 'Send the transaction reference/link or upload a receipt image.'));
     return;
