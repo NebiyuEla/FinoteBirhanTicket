@@ -267,17 +267,17 @@ test('normalizePhone accepts Ethio telecom and Safaricom Ethiopian mobile contac
 });
 
 
-test('Verify.et completed POST response reads amount from data array', () => {
+test('Verify.et completed POST with amount and name but no destination account requires manual review', () => {
   const client = new VerifyEtClient({ apiKey: 'test' });
   const result = client.assess({
     success: true,
     message: 'Verification completed.',
     data: [{ status: 'success', verified: true, amount: 300, currency: 'ETB', receiverName: 'Eyerusalem Fikadu' }]
   }, { expectedAmount: 300, expectedAccountName: 'Eyerusalem Fikadu', requestId: 'req-post' });
-  assert.equal(result.outcome, 'approved');
+  assert.equal(result.outcome, 'manual_review');
 });
 
-test('Verify.et polled status response reads amount from data.result', () => {
+test('Verify.et polled transaction without recipient account cannot auto-approve', () => {
   const client = new VerifyEtClient({ apiKey: 'test' });
   const result = client.assess({
     success: true,
@@ -298,7 +298,7 @@ test('Verify.et polled status response reads amount from data.result', () => {
       }
     }
   }, { expectedAmount: 300, expectedAccountName: 'Eyerusalem Fikadu', requestId: 'req-poll' });
-  assert.equal(result.outcome, 'approved');
+  assert.equal(result.outcome, 'manual_review');
 });
 
 test('Verify.et polled status still rejects mismatched amount', () => {
