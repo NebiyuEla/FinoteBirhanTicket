@@ -247,7 +247,7 @@ async function handleCommand(message, text) {
   if (cmd === '/verifystatus') {
     if (!db.isAdmin(telegramId)) return true;
     const health = await verifier.diagnostics();
-    await bot.sendMessage(telegramId, 'Verify.et: ' + health.status + '\\n' + health.detail);
+    await bot.sendMessage(telegramId, 'Verify.et: ' + health.status + '\n' + health.detail);
     return true;
   }
 
