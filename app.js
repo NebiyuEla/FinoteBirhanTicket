@@ -17,8 +17,6 @@
   const mode = params.get('mode') === 'seller' ? 'seller' : 'buyer';
   const sellerName = params.get('seller') || '';
   const sellerPayAvailable = false;
-  const snapshotAt = Number(params.get('at') || 0);
-  const SNAPSHOT_MAX_AGE_MS = 30 * 60_000;
   let lang = normalizeLang(params.get('lang') || localStorage.getItem('finote_lang') || 'am');
 
   const prizeNames = {
@@ -308,9 +306,10 @@
   }
 
   function snapshotIsFresh() {
-    if (!Number.isFinite(snapshotAt) || snapshotAt <= 0) return false;
-    const age = Date.now() - snapshotAt;
-    return age >= -30_000 && age <= SNAPSHOT_MAX_AGE_MS;
+    // Device clocks can differ from the bot server. The server validates the
+    // session owner, 30-minute expiry, and number availability atomically.
+    // Never reject a valid bot-issued link based on the phone's local clock.
+    return Boolean(session);
   }
 
   function alertMini(text) { if (tg?.showAlert) tg.showAlert(text); else window.alert(text); }
