@@ -312,3 +312,50 @@ test('Verify.et polled status still rejects mismatched amount', () => {
   assert.equal(result.outcome, 'rejected');
   assert.match(result.reason, /299/);
 });
+
+
+test('Telebirr receipt URL uses sender provider even when destination is CBE', () => {
+  assert.deepEqual(buildVerificationPayload({ provider: 'CBE',
+    reference: 'https://transactioninfo.ethiotelecom.et/receipt/DJT6FV0G7M',
+    accountNumber: '1000376307623' }), { bank: 'telebirr', transactionNumber: 'DJT6FV0G7M' });
+});
+
+test('Modern CBE receipt ID needs no suffix; old FT reference still does', () => {
+  assert.deepEqual(buildVerificationPayload({ provider: 'CBE', reference: 'abc1234567',
+    accountNumber: '1000376307623' }), { bank: 'cbe', referenceNumber: 'abc1234567' });
+  assert.equal(buildVerificationPayload({ provider: 'CBE', reference: 'FT123',
+    accountNumber: '1000376307623' }).accountSuffix, '76307623');
+});
+
+test('Untrusted receipt URLs cannot be passed to verification API', () => {
+  assert.throws(() => buildVerificationPayload({ provider: 'CBE',
+    reference: 'https://example.com/receipt/DJT6FV0G7M', accountNumber: '1000376307623'
+  }), /Unsupported receipt URL/);
+});
+
+test('A completed Verify.et status without transaction details is manual review', () => {
+  const client = new VerifyEtClient({ apiKey: 'test' });
+  const result = client.assess({ success: true, message: 'Verification status.',
+    data: { processingStatus: 'completed', status: 'success', verified: true }
+  }, { expectedAmount: 300, expectedAccountName: 'Eyerusalem Fikadu', expectedAccountNumber: '1000376307623' });
+  assert.equal(result.outcome, 'manual_review');
+  assert.doesNotMatch(result.reason, /Verification status/);
+});
+
+test('Failed, queued and not-found Verify.et responses are not definitive nonpayment', () => {
+  const client = new VerifyEtClient({ apiKey: 'test' });
+  for (const data of [
+    { processingStatus: 'failed', status: 'failed', verified: false },
+    { processingStatus: 'queued', status: 'pending', verified: false },
+    { processingStatus: 'completed', status: 'not_found', verified: false }
+  ]) assert.equal(client.assess({ message: 'Verification status.', data }).outcome, 'manual_review');
+});
+
+test('Verified amount does not excuse a wrong or absent receiver', () => {
+  const client = new VerifyEtClient({ apiKey: 'test' });
+  for (const fields of [
+    { receiverName: 'Unrelated Shop' }, {}
+  ]) assert.equal(client.assess({ data: [{
+    verified: true, status: 'success', amount: 300, currency: 'ETB', ...fields
+  }] }, { expectedAmount: 300, expectedAccountName: 'Eyerusalem Fikadu', expectedAccountNumber: '1000376307623' }).outcome, 'manual_review');
+});

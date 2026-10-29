@@ -1,7 +1,7 @@
 import { config, assertRuntimeConfig } from './config.js';
 import { TicketDatabase } from './db.js';
 import { TelegramBotApi, inlineKeyboard, replyKeyboard, removeKeyboard } from './telegram.js';
-import { VerifyEtClient } from './verifyEt.js';
+import { VerifyEtClient, looksLikePaymentReference } from './verifyEt.js';
 import { generateTicketPng } from './ticketImage.js';
 import {
   amountForPackage, csvEscape, encodeUnavailableBitset, formatNumber, htmlEscape,
@@ -208,9 +208,13 @@ async function handleUpdate(update) {
     if (handled) return;
   }
 
-  if (message.photo?.length || message.document) {
+  // Accept a transaction link sent after an image put the payment in manual review.
+  if (message.photo?.length || message.document || looksLikePaymentReference(text)) {
     const purchase = db.getOpenPurchaseForUser(telegramId);
-    if (purchase) return handlePaymentProof(message, purchase);
+    if (purchase && purchase.source === 'direct' &&
+        ['awaiting_proof', 'manual_review'].includes(purchase.status)) {
+      return handlePaymentProof(message, purchase);
+    }
   }
 
   return sendMainMenu(telegramId);
@@ -774,7 +778,8 @@ async function verifyDirectPayment(purchase, telegramId, proofMessage) {
       reference: purchase.payment_reference,
       accountNumber: purchase.payment_account_number || fallback?.account_number || '',
       expectedAmount: purchase.amount_etb,
-      expectedAccountName: purchase.payment_account_name || fallback?.account_name || ''
+      expectedAccountName: purchase.payment_account_name || fallback?.account_name || '',
+      expectedAccountNumber: purchase.payment_account_number || fallback?.account_number || ''
     });
   } catch (error) {
     const reason = `Verify.et request failed: ${error?.message || String(error)}`;

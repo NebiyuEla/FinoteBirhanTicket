@@ -1,42 +1,73 @@
 import crypto from 'node:crypto';
 import { normalizeNameForCompare } from './utils.js';
 
+export function parsePaymentReference(input) {
+  const raw = String(input || '').trim();
+  if (!raw) throw new Error('Transaction reference is required.');
+  if (!/^https?:\/\//i.test(raw)) return { bank: null, reference: raw };
+
+  let url;
+  try { url = new URL(raw); } catch { throw new Error('Invalid receipt URL.'); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) {
+    throw new Error('Use an official HTTPS receipt link.');
+  }
+  const host = url.hostname.toLowerCase();
+  if (host === 'transactioninfo.ethiotelecom.et') {
+    const match = url.pathname.match(/^\/receipt\/([a-z0-9]{8,32})\/?$/i);
+    if (!match) throw new Error('The Telebirr receipt link has no valid transaction number.');
+    return { bank: 'telebirr', reference: match[1].toUpperCase() };
+  }
+  if (host === 'mbreciept.cbe.com.et' || host === 'mbreceipt.cbe.com.et' || host === 'apps.cbe.com.et') {
+    return { bank: 'cbe', reference: url.origin + url.pathname + url.search };
+  }
+  throw new Error('Unsupported receipt URL. Send an official Telebirr/CBE receipt link or transaction reference.');
+}
+
+export function looksLikePaymentReference(input) {
+  const value = String(input || '').trim();
+  if (/^https?:\/\//i.test(value)) return true;
+  return /^(?=[a-z0-9_-]{8,64}$)(?=.*[0-9])[a-z0-9_-]+$/i.test(value);
+}
+
 export function buildVerificationPayload({ provider, reference, accountNumber }) {
-  const rawProvider = String(provider || '').toLowerCase().trim();
-  const compact = rawProvider.replace(/[^a-z0-9]/g, '');
-  let bank = compact;
-  if (compact.includes('cbebirr')) bank = 'cbebirr';
-  else if (compact.includes('cbe')) bank = 'cbe';
-  else if (compact.includes('telebirr')) bank = 'telebirr';
-  else if (compact.includes('mpesa')) bank = 'mpesa';
-  else if (compact.includes('bankofabyssinia') || compact === 'boa') bank = 'boa';
-  const ref = String(reference || '').trim();
+  const source = parsePaymentReference(reference);
+  const compact = String(provider || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  let bank = source.bank || compact;
+  if (!source.bank) {
+    if (compact.includes('cbebirr')) bank = 'cbebirr';
+    else if (compact.includes('cbe')) bank = 'cbe';
+    else if (compact.includes('telebirr')) bank = 'telebirr';
+    else if (compact.includes('mpesa')) bank = 'mpesa';
+    else if (compact.includes('bankofabyssinia') || compact === 'boa') bank = 'boa';
+  }
+  const ref = source.reference;
   const account = String(accountNumber || '').replace(/\s+/g, '');
-  if (!bank || !ref) throw new Error('Payment provider and transaction reference are required.');
+  if (!bank) throw new Error('Payment provider is required.');
 
   switch (bank) {
     case 'cbe':
-      if (account.length < 8) throw new Error('CBE account number is too short.');
-      return { bank: 'cbe', referenceNumber: ref, accountSuffix: account.slice(-8) };
+      // Modern CBE receipt IDs and links do not require a suffix. Legacy FT references do.
+      if (/^FT[a-z0-9]+$/i.test(ref)) {
+        if (account.length < 8) throw new Error('CBE account number is too short.');
+        return { bank: 'cbe', referenceNumber: ref, accountSuffix: account.slice(-8) };
+      }
+      return { bank: 'cbe', referenceNumber: ref };
     case 'boa':
-    case 'bankofabyssinia':
       if (account.length < 5) throw new Error('Bank of Abyssinia account number is too short.');
       return { bank: 'boa', referenceNumber: ref, accountSuffix: account.slice(-5) };
     case 'telebirr':
-      return { bank: 'telebirr', transactionNumber: ref, settlementAccount: account };
-    case 'mpesa':
-    case 'm-pesa':
-      return { bank: 'mpesa', transactionNumber: ref };
-    case 'cbebirr':
-    case 'cbe-birr':
-      return { bank: 'cbebirr', receiptNumber: ref, phone: account };
+      // The ticket's destination may be CBE even though the receipt is Telebirr.
+      // Only submit a settlement wallet number when the destination is Telebirr.
+      return compact.includes('telebirr') && !compact.includes('cbe')
+        ? { bank: 'telebirr', transactionNumber: ref, settlementAccount: account }
+        : { bank: 'telebirr', transactionNumber: ref };
+    case 'mpesa': return { bank: 'mpesa', transactionNumber: ref };
+    case 'cbebirr': return { bank: 'cbebirr', receiptNumber: ref, phone: account };
     case 'dashen':
     case 'awash':
     case 'siinqee':
-    case 'kaafiebirr':
-      return { bank, referenceNumber: ref };
-    default:
-      return { reference: ref };
+    case 'kaafiebirr': return { bank, referenceNumber: ref };
+    default: return { reference: ref };
   }
 }
 
@@ -49,36 +80,33 @@ export class VerifyEtClient {
 
   get enabled() { return Boolean(this.apiKey); }
 
-  async verify({ provider, reference, accountNumber, expectedAmount, expectedAccountName }) {
+  async verify({ provider, reference, accountNumber, expectedAmount, expectedAccountName, expectedAccountNumber }) {
     if (!this.enabled) return { outcome: 'manual_review', reason: 'Verify.et API key is not configured.' };
     const payload = buildVerificationPayload({ provider, reference, accountNumber });
-    const idem = crypto.randomUUID();
-    const response = await fetch(`${this.baseUrl}/api/verify?waitMs=5000`, {
+    const response = await fetch(this.baseUrl + '/api/verify?waitMs=5000', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         'x-api-key': this.apiKey,
-        'idempotency-key': idem
+        'idempotency-key': crypto.randomUUID()
       },
       body: JSON.stringify(payload)
     });
     const body = await safeBody(response);
-
+    const expected = { expectedAmount, expectedAccountName, expectedAccountNumber };
     if (response.status === 202) {
       const requestId = body?.requestId || body?.verification?.requestId;
-      if (!requestId) return { outcome: 'manual_review', reason: 'Verify.et queued the request without a request ID.', payload: body };
-      const terminal = await this.poll(requestId);
-      return this.assess(terminal, { expectedAmount, expectedAccountName, requestId, original: body });
+      if (!requestId) return { outcome: 'manual_review', reason: 'Verify.et queued without a request ID.', payload: body };
+      return this.assess(await this.poll(requestId), { ...expected, requestId, original: body });
     }
-
-    if (!response.ok) {
-      if ([401, 402, 403, 429, 503].includes(response.status)) {
-        return { outcome: 'manual_review', reason: body?.message || `Verify.et returned ${response.status}.`, payload: body };
-      }
-      return { outcome: 'rejected', reason: body?.message || `Verify.et returned ${response.status}.`, payload: body };
-    }
-
-    return this.assess(body, { expectedAmount, expectedAccountName, requestId: body?.requestId });
+    // Transport errors, insufficient credits, and provider outages are not
+    // evidence that the buyer did not pay.
+    if (!response.ok) return {
+      outcome: 'manual_review',
+      reason: 'Verify.et could not complete verification (HTTP ' + response.status + ').',
+      payload: body
+    };
+    return this.assess(body, { ...expected, requestId: body?.requestId });
   }
 
   async poll(requestId) {
@@ -96,49 +124,61 @@ export class VerifyEtClient {
     return { success: false, message: 'Verification did not finish before the polling timeout.', requestId };
   }
 
-  assess(body, { expectedAmount, expectedAccountName, requestId, original } = {}) {
-    // POST /api/verify returns the completed transaction directly in data[0].
-    // GET /api/verify/:requestId returns a status wrapper in data, with the
-    // actual bank transaction nested under data.result. Always unwrap that
-    // result before checking amount/receiver fields.
+  assess(body, { expectedAmount, expectedAccountName, expectedAccountNumber, requestId, original } = {}) {
+    // A completed GET status can omit the transaction's amount and receiver.
+    // Never issue tickets from status alone.
     const envelope = Array.isArray(body?.data) ? body.data[0] : body?.data || body?.verification || null;
-    if (!envelope) return { outcome: 'manual_review', reason: body?.message || 'Verify.et returned no verification record.', requestId, payload: body };
-
-    const nestedResult = envelope?.result && typeof envelope.result === 'object' ? envelope.result : null;
-    const record = nestedResult
-      ? {
-          ...envelope,
-          ...nestedResult,
-          verified: nestedResult.verified ?? envelope.verified,
-          status: nestedResult.status ?? envelope.status,
-          processingStatus: envelope.processingStatus ?? nestedResult.processingStatus
-        }
+    if (!envelope || typeof envelope !== 'object') return {
+      outcome: 'manual_review', reason: 'Verify.et did not return transaction details.', requestId, payload: body
+    };
+    const nested = Array.isArray(envelope.result) ? envelope.result[0] : envelope.result;
+    const record = nested && typeof nested === 'object'
+      ? { ...envelope, ...nested, processingStatus: envelope.processingStatus || nested.processingStatus }
       : envelope;
-
-    if (!record.verified || record.status === 'failed' || record.status === 'not_found') {
-      return { outcome: 'rejected', reason: body?.message || 'The transaction could not be verified.', requestId, payload: body };
+    const processing = String(record.processingStatus || '').toLowerCase();
+    const status = String(record.status || '').toLowerCase();
+    if ((processing && processing !== 'completed') || record.verified !== true || (status && status !== 'success')) {
+      return { outcome: 'manual_review', reason: 'Automatic verification was inconclusive. An administrator must review the receipt.', requestId, payload: body };
     }
 
-    const rawAmount = record.amount;
-    const amount = Number(rawAmount);
-    if (rawAmount == null || rawAmount === '' || !Number.isFinite(amount)) {
-      return { outcome: 'manual_review', reason: 'The transaction is verified, but Verify.et did not return an amount to compare.', requestId, payload: body };
+    const amount = Number(record.amount);
+    if (record.amount == null || record.amount === '' || !Number.isFinite(amount)) {
+      return { outcome: 'manual_review', reason: 'Verified status returned without a transaction amount.', requestId, payload: body };
+    }
+    if (record.currency && String(record.currency).toUpperCase() !== 'ETB') {
+      return { outcome: 'manual_review', reason: 'Verified currency is not ETB.', requestId, payload: body };
     }
     if (Number.isFinite(Number(expectedAmount)) && amount !== Number(expectedAmount)) {
-      return { outcome: 'rejected', reason: `Verified amount is ${amount} ETB, but ${expectedAmount} ETB is required.`, requestId, payload: body };
+      return { outcome: 'rejected', reason: 'Verified transfer amount is ' + amount + ' ETB; required amount is ' + expectedAmount + ' ETB.', requestId, payload: body };
     }
 
-    const receiver = normalizeNameForCompare(record.receiverName || record.receiver_name || '');
-    const expected = normalizeNameForCompare(expectedAccountName || '');
-    if (receiver && expected) {
-      const same = receiver.includes(expected) || expected.includes(receiver);
-      if (!same) {
-        return { outcome: 'manual_review', reason: 'Payment verified, but the receiver name does not clearly match the configured account holder.', requestId, payload: body };
-      }
+    const expectedName = normalizeNameForCompare(expectedAccountName || '');
+    const receivedName = normalizeNameForCompare(record.receiverName || record.receiver_name || '');
+    const expectedDigits = String(expectedAccountNumber || '').replace(/\D/g, '');
+    const receivedAccount = String(record.receiverAccount || record.receiver_account || '');
+    const receivedDigits = receivedAccount.replace(/\D/g, '');
+    const hasReceiverName = Boolean(expectedName && receivedName);
+    const hasReceiverAccount = Boolean(expectedDigits.length >= 4 && receivedDigits.length >= 4);
+
+    if (record.settlementAccountMatch?.matched === false) {
+      return { outcome: 'manual_review', reason: 'The receipt does not match the intended payment account.', requestId, payload: body };
+    }
+    if (!hasReceiverName && !hasReceiverAccount) {
+      return { outcome: 'manual_review', reason: 'Verified receipt has insufficient recipient details to confirm the payment destination.', requestId, payload: body };
+    }
+    if (hasReceiverName && !(receivedName.includes(expectedName) || expectedName.includes(receivedName))) {
+      return { outcome: 'manual_review', reason: 'Verified recipient name does not match the configured account holder.', requestId, payload: body };
+    }
+    if (hasReceiverAccount && !expectedDigits.endsWith(receivedDigits.slice(-4))) {
+      return { outcome: 'manual_review', reason: 'Verified recipient account does not match the payment destination.', requestId, payload: body };
     }
 
-    return { outcome: 'approved', reason: body?.message || 'Transaction verified.', requestId, payload: { initial: original, terminal: body } };
+    return {
+      outcome: 'approved', reason: 'Transfer verified with matching amount and recipient.',
+      requestId, payload: { initial: original, terminal: body }
+    };
   }
+
 }
 
 async function safeBody(response) {
