@@ -1,6 +1,36 @@
 import { Jimp } from 'jimp';
 import jsQR from 'jsqr';
 
+// Inspect headers before decompressing an image. The DISCloud bot has a
+// constrained RAM allocation; huge receipt images must be reviewed by admins
+// rather than decoded in the event loop and risking a bot crash.
+export function receiptImageDimensions(buffer) {
+  if (!Buffer.isBuffer(buffer)) return null;
+  if (buffer.length >= 24 && buffer.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 9 < buffer.length) {
+      if (buffer[offset++] !== 0xff) continue;
+      while (buffer[offset] === 0xff) offset++;
+      const marker = buffer[offset++];
+      if (marker === 0xda || marker === 0xd9) break;
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+      if (offset + 2 > buffer.length) break;
+      const size = buffer.readUInt16BE(offset);
+      if (size < 2 || offset + size > buffer.length) break;
+      if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) ||
+          (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
+        if (size < 7) break;
+        return { width: buffer.readUInt16BE(offset + 5), height: buffer.readUInt16BE(offset + 3) };
+      }
+      offset += size;
+    }
+  }
+  return null;
+}
+
 export class TelegramBotApi {
   constructor(token) {
     this.token = token;
@@ -57,19 +87,20 @@ export class TelegramBotApi {
 
   async readQrFromTelegramFile(fileId) {
     const file = await this.call('getFile', { file_id: fileId });
-    if (!file?.file_path || Number(file.file_size || 0) > 12 * 1024 * 1024) return null;
+    if (!file?.file_path || Number(file.file_size || 0) > 3 * 1024 * 1024) return null;
 
     const response = await fetch(`${this.fileBase}/${file.file_path}`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) return null;
     const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 3 * 1024 * 1024) return null;
+    const dimensions = receiptImageDimensions(buffer);
+    if (!dimensions || !dimensions.width || !dimensions.height ||
+        dimensions.width * dimensions.height > 2_000_000) return null;
     const image = await Jimp.read(buffer);
     let scan = image;
-
-    // Keep ordinary screenshots at full resolution for QR accuracy. Only reduce
-    // unusually large images so one upload cannot consume excessive CPU/memory.
     const pixels = image.bitmap.width * image.bitmap.height;
-    if (pixels > 5_000_000) {
-      const factor = Math.sqrt(5_000_000 / pixels);
+    if (pixels > 800_000) {
+      const factor = Math.sqrt(800_000 / pixels);
       scan = image.clone().scale(factor);
     }
 
