@@ -24,7 +24,7 @@ export function parsePaymentReference(input) {
   const raw = extractPaymentReference(input);
   if (!raw) throw new Error('Transaction reference is required.');
   if (!/^https?:\/\//i.test(raw)) {
-    if (!/^[a-z0-9_-]{3,96}$/i.test(raw)) throw new Error('Send a valid transaction reference or official receipt link.');
+    if (!/^(?=[a-z0-9_-]{5,96}$)(?=.*[0-9])[a-z0-9_-]+$/i.test(raw)) throw new Error('Send a valid transaction reference or official receipt link.');
     return { bank: null, reference: raw };
   }
 
