@@ -14,7 +14,6 @@
 
   const params = new URLSearchParams(location.search);
   const session = params.get('s') || '';
-  const keyboardTransport = params.get('transport') === 'keyboard';
   const mode = params.get('mode') === 'seller' ? 'seller' : 'buyer';
   const sellerName = params.get('seller') || '';
   const sellerPayAvailable = false;
@@ -105,18 +104,7 @@
   loadTicketImages();
   applyLanguage();
 
-  if (!session || !tg?.sendData || !keyboardTransport || !snapshotIsFresh()) {
-    const reason = !session ? 'missing session'
-      : !tg?.sendData ? 'Telegram WebApp unavailable'
-      : !keyboardTransport ? 'wrong launch method'
-      : 'session timestamp expired or invalid';
-    const detail = document.querySelector('[data-screen="error"] p');
-    if (detail) detail.textContent = (lang === 'am'
-      ? 'ከቦቱ ውስጥ “ትኬት ይግዙ” ይጫኑ እና የተላከውን “ትኬቶችን ክፈት” ቁልፍ ይጠቀሙ።'
-      : 'In the bot, tap Buy Ticket, then use the new Open live tickets button.')
-      + ' (' + reason + ')';
-    show('error');
-  }
+  if (!session || !tg?.sendData || !snapshotIsFresh()) show('error');
   else show(mode === 'seller' ? 'sellerCustomer' : 'ticket');
 
   document.getElementById('sellerContinue').addEventListener('click', () => {
@@ -177,7 +165,7 @@
   document.getElementById('backBtn').addEventListener('click', () => show('ticket'));
 
   confirmBtn.addEventListener('click', () => {
-    if (!keyboardTransport || !tg?.sendData || !snapshotIsFresh()) return show('error');
+    if (!snapshotIsFresh()) return show('error');
     if (!complete()) return;
     const payload = { type: mode === 'seller' ? 'seller_sale_selection' : 'ticket_selection', session, package:state.ticket, numbers:{}, lang };
     if (mode === 'seller') {
@@ -189,18 +177,8 @@
     for (const pool of pools) payload.numbers[String(pool)] = state.numbers[pool];
     confirmBtn.disabled = true;
     confirmBtn.textContent = T[lang].sending;
-    try {
-      tg.sendData(JSON.stringify(payload));
-      // sendData has no delivery acknowledgement. Never leave a permanent
-      // spinner or automatically resend: the bot may have reserved the number.
-      window.setTimeout(() => {
-        if (!confirmBtn.disabled) return;
-        confirmBtn.textContent = lang === 'am' ? 'በቦቱ ውስጥ ያረጋግጡ' : 'Check the bot chat';
-        alertMini(lang === 'am'
-          ? 'ምርጫው ተልኮ ሊሆን ይችላል። በቦቱ ውስጥ የማረጋገጫ መልዕክት ይፈትሹ። ሁለተኛ ጊዜ አይላኩ።'
-          : 'Your selection may have been sent. Check the bot chat for confirmation before trying again. Do not submit twice.');
-      }, 12000);
-    } catch {
+    try { tg.sendData(JSON.stringify(payload)); }
+    catch {
       confirmBtn.disabled = false;
       confirmBtn.textContent = T[lang].reserveContinue;
       show('error');
