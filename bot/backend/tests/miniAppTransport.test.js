@@ -55,8 +55,8 @@ test('deep link rejects invalid, oversized, expired-format and non-ticket payloa
 
 test('backend uses inline buyer launcher and routes /start through existing authenticated reservation', () => {
   const source = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
-  assert.match(source, /url\.searchParams\.set\('transport', 'inline'\)/);
-  assert.match(source, /url\.searchParams\.set\('bot', botInfo\.username\)/);
+  assert.match(source, /url\.searchParams\.set\('transport', inline \? 'inline' : 'keyboard'\)/);
+  assert.match(source, /if \(inline\) url\.searchParams\.set\('bot', botInfo\.username\)/);
   assert.match(source, /ticketLauncherInline\(\{ url: url\.toString\(\)/);
   assert.match(source, /parseBuyerTicketDeepLink\(args\)/);
   assert.match(source, /getUsableWebSession\(payload\.session, telegramId\)/);
@@ -78,4 +78,11 @@ test('legacy unsupported launch method is refused without locking the button', (
   const handler = source.slice(source.indexOf("confirmBtn.addEventListener('click'"));
   const guard = handler.indexOf("if (!((inlineTransport && mode === 'buyer') || (keyboardTransport && typeof tg?.sendData === 'function')))"); 
   assert.ok(guard >= 0 && handler.indexOf('confirmBtn.disabled = true') > guard);
+});
+
+test('backend retains working reply-keyboard tickets until matching Vercel frontend is live', () => {
+  const source = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+  assert.match(source, /inlineBuyerFrontendReady = html\.includes\('app\.js\?v=20261029-inline-ticket-'\)/);
+  assert.match(source, /const useInlineBuyer = type !== 'seller' && inlineBuyerFrontendReady/);
+  assert.match(source, /ticketLauncherKeyboard\(\{ url: url\.toString\(\), lang: am \? 'am' : 'en', seller: type === 'seller' \}\)/);
 });
