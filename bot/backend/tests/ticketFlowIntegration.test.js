@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { TicketDatabase } from '../src/db.js';
+import { parseBuyerTicketDeepLink } from '../src/miniAppTransport.js';
 import { deliverReceiptToAdmins } from '../src/adminReceipt.js';
 
 // Integration regression for one complete BUY -> RESERVE -> PAYMENT PROOF ->
@@ -69,6 +70,43 @@ test('buyer selection through admin-reviewed receipt issues exactly one ticket',
     }), /taken/i);
     assert.equal(db.confirmPurchase(purchase.id, admin).status, 'paid');
     assert.equal(db.ticketsForUser(buyer).length, 1);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('in-message Mini App deep-link reserves a bundle only once and only for its owner', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'finote-deeplink-'));
+  const db = new TicketDatabase(path.join(dir, 'test.sqlite'));
+  try {
+    const buyer = 1001;
+    const anotherUser = 1002;
+    db.ensureUser(buyer);
+    db.setUserName(buyer, 'Test Buyer');
+    db.setUserPhone(buyer, '+251911111111');
+    db.ensureUser(anotherUser);
+    db.setUserName(anotherUser, 'Other Buyer');
+    db.setUserPhone(anotherUser, '+251922222222');
+    const session = db.createWebSession(buyer, null, 30);
+    const encoded = 't_' + session + '_b_001077200';
+    assert.ok(encoded.length <= 64);
+    const chosen = parseBuyerTicketDeepLink(encoded);
+    assert.equal(chosen.package, 'bundle');
+    assert.equal(db.getUsableWebSession(chosen.session, anotherUser), null);
+    assert.ok(db.getUsableWebSession(chosen.session, buyer));
+    const reservation = db.reservePurchase({
+      telegramId: buyer, packageType: chosen.package, selectedNumbers: chosen.numbers
+    });
+    db.consumeWebSession(chosen.session, buyer);
+    assert.equal(db.getUsableWebSession(chosen.session, buyer), null);
+    assert.deepEqual(
+      reservation.numbers.map((n) => [Number(n.pool), Number(n.number)]).sort((a,b) => a[0]-b[0]),
+      [[50,200],[100,77],[200,1]]
+    );
+    assert.throws(() => db.reservePurchase({
+      telegramId: anotherUser, packageType: chosen.package, selectedNumbers: chosen.numbers
+    }), /taken/i);
   } finally {
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
