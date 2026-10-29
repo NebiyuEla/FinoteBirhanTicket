@@ -114,3 +114,44 @@ test('bot payment flow uses extracted links and does not swallow pending confirm
   assert.match(index, /parsePaymentReference\(reference\)/);
   assert.match(index, /'verification_pending'\]\.includes\(purchase.status\)/);
 });
+
+test('finds the official Telebirr link even after an unrelated link in shared text', () => {
+  const shared = 'Visit https://example.com/help first. Receipt: ' + source + '?source=telegram.';
+  assert.equal(parsePaymentReference(shared).reference, 'DET8FJGUJ4');
+});
+
+test('explicit Verify.et wallet match overcomes masked or differently spelled receiver name', () => {
+  const verifier = new VerifyEtClient({ apiKey: 'mock' });
+  assert.equal(verifier.assess(paid({
+    receiverName: 'Masked recipient',
+    settlementAccountMatch: {
+      matched: true, ambiguous: false,
+      matchedSettlementAccount: '0911223344', matchConfidence: 'high', source: 'manual'
+    }
+  }), expected).outcome, 'approved');
+});
+
+test('admin read-only check reports API authorization without spending verification credits', async () => {
+  const previousFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url, options) => {
+      assert.match(String(url), /\/api\/verify\/history\?limit=1/);
+      assert.equal(options.method, undefined);
+      assert.equal(options.headers['x-api-key'], 'test-api-key');
+      return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
+    };
+    const verifier = new VerifyEtClient({ apiKey: 'test-api-key' });
+    assert.equal((await verifier.diagnostics()).status, 'authenticated');
+    assert.equal((await new VerifyEtClient().diagnostics()).status, 'missing_key');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('bot exposes Verify.et diagnostics to administrators only', () => {
+  const source = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+  assert.match(source, /if \(cmd === '\/verifystatus'\)/);
+  assert.match(source, /if \(!db\.isAdmin\(telegramId\)\) return true;/);
+  assert.match(source, /const health = await verifier\.diagnostics\(\)/);
+  assert.match(source, /reference = 'https:\/\/transactioninfo\.ethiotelecom\.et\/receipt\/' \+ parsed\.reference/);
+});
