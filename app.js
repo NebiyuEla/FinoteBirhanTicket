@@ -14,7 +14,7 @@
 
   const params = new URLSearchParams(location.search);
   const session = params.get('s') || '';
-  const keyboardTransport = params.get('transport') === 'keyboard' && !tg?.initDataUnsafe?.query_id;
+  const keyboardTransport = params.get('transport') === 'keyboard';
   const mode = params.get('mode') === 'seller' ? 'seller' : 'buyer';
   const sellerName = params.get('seller') || '';
   const sellerPayAvailable = false;
