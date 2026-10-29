@@ -474,7 +474,7 @@ function addMiniAppContext(url, telegramId) {
 
 function buildMiniAppUrl(telegramId) {
   const url = new URL(config.miniAppUrl);
-  const session = db.createWebSession(telegramId, null, 5);
+  const session = db.createWebSession(telegramId, null, 30);
   url.searchParams.set('transport', 'keyboard');
   const availability = db.availability();
   url.searchParams.set('s', session);
@@ -488,7 +488,7 @@ function buildMiniAppUrl(telegramId) {
 
 function buildSellerMiniAppUrl(seller) {
   const url = new URL(config.miniAppUrl);
-  const session = db.createWebSession(seller.telegram_id, seller.id, 5);
+  const session = db.createWebSession(seller.telegram_id, seller.id, 30);
   url.searchParams.set('transport', 'keyboard');
   const availability = db.availability();
   url.searchParams.set('s', session);
