@@ -19,7 +19,7 @@
   const sellerName = params.get('seller') || '';
   const sellerPayAvailable = false;
   const snapshotAt = Number(params.get('at') || 0);
-  const SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
+  const SNAPSHOT_MAX_AGE_MS = 30 * 60_000;
   let lang = normalizeLang(params.get('lang') || localStorage.getItem('finote_lang') || 'am');
 
   const prizeNames = {
