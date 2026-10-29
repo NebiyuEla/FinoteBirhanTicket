@@ -186,15 +186,17 @@ export class VerifyEtClient {
       return { outcome: 'manual_review', reason: 'The receipt does not match the intended payment account.', requestId, payload: body };
     }
     const matchedDigits = String(match?.matchedSettlementAccount || '').replace(/\D/g, '');
+    const expectedCanonical = expectedDigits.startsWith('0') && expectedDigits.length === 10
+      ? '251' + expectedDigits.slice(1) : expectedDigits;
+    const matchedCanonical = matchedDigits.startsWith('0') && matchedDigits.length === 10
+      ? '251' + matchedDigits.slice(1) : matchedDigits;
     const explicitlyMatchedAccount = match?.matched === true && !match.ambiguous &&
-      expectedDigits.length >= 4 && matchedDigits.length >= 4 &&
-      (expectedDigits.endsWith(matchedDigits) || matchedDigits.endsWith(expectedDigits) ||
-       expectedDigits.endsWith(matchedDigits.slice(-4)));
+      expectedCanonical.length >= 9 && matchedCanonical === expectedCanonical;
     if (match?.matched === true && !explicitlyMatchedAccount) {
       return { outcome: 'manual_review', reason: 'The verified settlement account does not match this ticket payment destination.', requestId, payload: body };
     }
-    if (!hasReceiverName && !hasReceiverAccount && !explicitlyMatchedAccount) {
-      return { outcome: 'manual_review', reason: 'Verified receipt has insufficient recipient details to confirm the payment destination.', requestId, payload: body };
+    if (!hasReceiverAccount && !explicitlyMatchedAccount) {
+      return { outcome: 'manual_review', reason: 'Verified receipt has insufficient recipient account details to confirm the payment destination.', requestId, payload: body };
     }
     if (hasReceiverName && !(receivedName.includes(expectedName) || expectedName.includes(receivedName))) {
       return { outcome: 'manual_review', reason: 'Verified recipient name does not match the configured account holder.', requestId, payload: body };
