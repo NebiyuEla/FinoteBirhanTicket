@@ -772,7 +772,12 @@ async function handlePaymentProof(message, purchase) {
   let reference = rawReference;
   if (reference) {
     try {
-      parsePaymentReference(reference);
+      const parsed = parsePaymentReference(reference);
+      // A receipt URL with a tracking query must not bypass the unique
+      // transaction-reference check by looking like a different payment.
+      if (parsed.bank === 'telebirr') {
+        reference = 'https://transactioninfo.ethiotelecom.et/receipt/' + parsed.reference;
+      }
     } catch (error) {
       // A screenshot may have a normal caption rather than a transaction link.
       // Keep forwarding that image to admins without submitting invalid text.
