@@ -5,8 +5,19 @@ import { normalizeNameForCompare } from './utils.js';
 // Extract only an actual HTTPS URL; do not accept arbitrary external URLs.
 export function extractPaymentReference(input) {
   const text = String(input || '').trim();
-  const link = text.match(/https?:\/\/[^\s<>"'()]+/i);
-  return link ? link[0].replace(/[.,;!?\]\u1361\u1362]+$/u, '') : text;
+  const links = text.match(/https?:\/\/[^\s<>"'()]+/gi) || [];
+  const clean = (value) => value.replace(/[.,;!?\]\u1361\u1362]+$/u, '');
+  const officialHosts = new Set([
+    'transactioninfo.ethiotelecom.et',
+    'mbreciept.cbe.com.et',
+    'mbreceipt.cbe.com.et',
+    'apps.cbe.com.et'
+  ]);
+  const official = links.find((value) => {
+    try { return officialHosts.has(new URL(clean(value)).hostname.toLowerCase()); }
+    catch { return false; }
+  });
+  return official ? clean(official) : links.length ? clean(links[0]) : text;
 }
 
 export function parsePaymentReference(input) {
