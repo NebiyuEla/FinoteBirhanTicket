@@ -177,11 +177,27 @@
     for (const pool of pools) payload.numbers[String(pool)] = state.numbers[pool];
     confirmBtn.disabled = true;
     confirmBtn.textContent = T[lang].sending;
-    try { tg.sendData(JSON.stringify(payload)); }
-    catch {
+    let sent = false;
+    try {
+      // Telegram closes keyboard-launched Mini Apps after sendData succeeds.
+      // Restore the original button if the client silently hangs instead.
+      tg.sendData(JSON.stringify(payload));
+      sent = true;
+    } catch {
       confirmBtn.disabled = false;
       confirmBtn.textContent = T[lang].reserveContinue;
-      show('error');
+      alertMini(lang === 'am' ? 'መላክ አልተሳካም። እንደገና ይሞክሩ።' : 'Could not submit. Please try again.');
+    }
+    if (sent) {
+      setTimeout(() => {
+        if (!document.hidden && confirmBtn.disabled) {
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = T[lang].reserveContinue;
+          alertMini(lang === 'am'
+            ? 'በመጀመሪያ በቦቱ ቻት ውስጥ ማረጋገጫ መድረሱን ያረጋግጡ።'
+            : 'Check the bot chat for confirmation before retrying.');
+        }
+      }, 12000);
     }
   });
 
