@@ -198,7 +198,8 @@ export class VerifyEtClient {
     if (!hasReceiverAccount && !explicitlyMatchedAccount) {
       return { outcome: 'manual_review', reason: 'Verified receipt has insufficient recipient account details to confirm the payment destination.', requestId, payload: body };
     }
-    if (hasReceiverName && !(receivedName.includes(expectedName) || expectedName.includes(receivedName))) {
+    if (hasReceiverName && !explicitlyMatchedAccount &&
+        !(receivedName.includes(expectedName) || expectedName.includes(receivedName))) {
       return { outcome: 'manual_review', reason: 'Verified recipient name does not match the configured account holder.', requestId, payload: body };
     }
     if (hasReceiverAccount && !expectedDigits.endsWith(receivedDigits.slice(-4))) {
