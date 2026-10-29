@@ -12,7 +12,8 @@ export class TelegramBotApi {
     const response = await fetch(`${this.base}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(method === 'getUpdates' ? 45000 : 15000)
     });
     const body = await response.json();
     if (!body.ok) throw new Error(`Telegram ${method}: ${body.description || response.status}`);
@@ -71,7 +72,7 @@ export class TelegramBotApi {
     const file = await this.call('getFile', { file_id: fileId });
     if (!file?.file_path || Number(file.file_size || 0) > 12 * 1024 * 1024) return null;
 
-    const response = await fetch(`${this.fileBase}/${file.file_path}`);
+    const response = await fetch(`${this.fileBase}/${file.file_path}`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) return null;
     const buffer = Buffer.from(await response.arrayBuffer());
     const image = await Jimp.read(buffer);
@@ -100,7 +101,7 @@ export class TelegramBotApi {
       if (value == null) continue;
       form.append(key, typeof value === 'string' ? value : JSON.stringify(value));
     }
-    const response = await fetch(`${this.base}/sendPhoto`, { method: 'POST', body: form });
+    const response = await fetch(`${this.base}/sendPhoto`, { method: 'POST', body: form, signal: AbortSignal.timeout(30000) });
     const body = await response.json();
     if (!body.ok) throw new Error(`Telegram sendPhoto: ${body.description || response.status}`);
     return body.result;
@@ -115,7 +116,7 @@ export class TelegramBotApi {
       if (value == null) continue;
       form.append(key, typeof value === 'string' ? value : JSON.stringify(value));
     }
-    const response = await fetch(`${this.base}/sendDocument`, { method: 'POST', body: form });
+    const response = await fetch(`${this.base}/sendDocument`, { method: 'POST', body: form, signal: AbortSignal.timeout(30000) });
     const body = await response.json();
     if (!body.ok) throw new Error(`Telegram sendDocument: ${body.description || response.status}`);
     return body.result;
