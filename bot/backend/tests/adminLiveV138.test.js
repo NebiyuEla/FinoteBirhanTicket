@@ -15,7 +15,9 @@ test('Mini App hides unavailable numbers and uses fresh snapshots', () => {
   const app = fs.readFileSync(new URL('../../../app.js', import.meta.url), 'utf8');
   const html = fs.readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
   assert.match(app, /if \(unavailable\[state\.activePool\]\.has\(number\)\) continue;/);
-  assert.match(app, /SNAPSHOT_MAX_AGE_MS = 30 \* 60_000/);
+  assert.match(app, /return Boolean\(session\);/);
+  const backend = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+  assert.match(backend, /createWebSession\(telegramId, null, 30\)/);
   assert.doesNotMatch(html, /dot taken/);
 });
 
