@@ -2,7 +2,7 @@ import { config, assertRuntimeConfig } from './config.js';
 import { TicketDatabase } from './db.js';
 import { TelegramBotApi, inlineKeyboard, replyKeyboard, removeKeyboard } from './telegram.js';
 import { VerifyEtClient, looksLikePaymentReference, extractPaymentReference, parsePaymentReference } from './verifyEt.js';
-import { ticketLauncherKeyboard } from './miniAppTransport.js';
+import { ticketLauncherKeyboard, ticketLauncherInline, parseBuyerTicketDeepLink } from './miniAppTransport.js';
 import { deliverReceiptToAdmins } from './adminReceipt.js';
 import { generateTicketPng } from './ticketImage.js';
 import { processUpdateBatch } from './updateDispatcher.js';
@@ -246,6 +246,16 @@ async function handleCommand(message, text) {
   }
 
   if (cmd === '/start') {
+    // The original in-message ticket launcher returns selected numbers through
+    // Telegram's own /start deep-link. This is not an unauthenticated purchase:
+    // handleWebAppData checks that the one-use session belongs to this user.
+    const selection = parseBuyerTicketDeepLink(args);
+    if (selection) {
+      return handleWebAppData({
+        ...message,
+        web_app_data: { data: JSON.stringify({ ...selection, lang: langOf(telegramId) }) }
+      }).then(() => true);
+    }
     const user = db.getUser(telegramId);
     if (!user?.full_name || user.registration_state === 'new') {
       db.setUserState(telegramId, 'register_name');
@@ -460,7 +470,9 @@ async function sendFreshMiniAppLauncher(telegramId, type = 'buyer') {
   return bot.sendMessage(telegramId,
     am ? '🔄 የሚታዩት ቁጥሮች ከአሁኑ ዳታ ተዘምነዋል። የተያዙ እና የተሸጡ ቁጥሮች አይታዩም።'
        : '🔄 Availability is refreshed from the live database. Reserved and sold numbers are hidden.',
-    { reply_markup: ticketLauncherKeyboard({ url: url.toString(), lang: am ? 'am' : 'en', seller: type === 'seller' }) }
+    { reply_markup: type === 'seller'
+      ? ticketLauncherKeyboard({ url: url.toString(), lang: am ? 'am' : 'en', seller: true })
+      : ticketLauncherInline({ url: url.toString(), lang: am ? 'am' : 'en' }) }
   );
 }
 
@@ -476,7 +488,8 @@ function addMiniAppContext(url, telegramId) {
 function buildMiniAppUrl(telegramId) {
   const url = new URL(config.miniAppUrl);
   const session = db.createWebSession(telegramId, null, 30);
-  url.searchParams.set('transport', 'keyboard');
+  url.searchParams.set('transport', 'inline');
+  url.searchParams.set('bot', botInfo.username);
   const availability = db.availability();
   url.searchParams.set('s', session);
   url.searchParams.set('at', String(Date.now()));
