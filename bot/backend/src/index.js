@@ -39,6 +39,22 @@ function prizeSetting(pool, lang) {
 let botInfo = null;
 let stopping = false;
 let offset = 0;
+let inlineBuyerFrontendReady = false;
+
+async function probeInlineBuyerFrontend() {
+  // Never turn on inline launcher until its matching JavaScript is genuinely
+  // deployed. Otherwise existing working keyboard purchases would regress.
+  try {
+    const response = await fetch(config.miniAppUrl, {
+      headers: { 'cache-control': 'no-cache' },
+      signal: AbortSignal.timeout(4000)
+    });
+    const html = response.ok ? await response.text() : '';
+    inlineBuyerFrontendReady = html.includes('app.js?v=20261029-inline-ticket-');
+  } catch {
+    inlineBuyerFrontendReady = false;
+  }
+}
 
 main().catch((error) => {
   console.error('[fatal]', error);
@@ -48,6 +64,8 @@ main().catch((error) => {
 async function main() {
   botInfo = await bot.getMe();
   console.log(`[boot] @${botInfo.username} (${botInfo.id})`);
+  void probeInlineBuyerFrontend();
+  setInterval(() => { void probeInlineBuyerFrontend(); }, 5 * 60_000).unref();
   db.releaseExpiredReservations();
   setInterval(() => {
     try { db.releaseExpiredReservations(); } catch (error) { console.error('[cleanup]', error); }
@@ -460,6 +478,7 @@ async function sendFreshMiniAppLauncher(telegramId, type = 'buyer') {
     return bot.sendMessage(telegramId, tr(telegramId, 'የMini App ሊንክ አልተዘጋጀም።', 'The Mini App URL is not configured yet.'));
   }
   const am = langOf(telegramId) !== 'en';
+  const useInlineBuyer = type !== 'seller' && inlineBuyerFrontendReady;
   let url;
   let buttonText;
   if (type === 'seller') {
@@ -470,15 +489,15 @@ async function sendFreshMiniAppLauncher(telegramId, type = 'buyer') {
     url = buildSellerMiniAppUrl(seller);
     buttonText = am ? '🧾 ትኬቶችን ክፈት' : '🧾 Open live tickets';
   } else {
-    url = buildMiniAppUrl(telegramId);
+    url = buildMiniAppUrl(telegramId, useInlineBuyer);
     buttonText = am ? '🎟 ትኬቶችን ክፈት' : '🎟 Open live tickets';
   }
   return bot.sendMessage(telegramId,
     am ? '🔄 የሚታዩት ቁጥሮች ከአሁኑ ዳታ ተዘምነዋል። የተያዙ እና የተሸጡ ቁጥሮች አይታዩም።'
        : '🔄 Availability is refreshed from the live database. Reserved and sold numbers are hidden.',
-    { reply_markup: type === 'seller'
-      ? ticketLauncherKeyboard({ url: url.toString(), lang: am ? 'am' : 'en', seller: true })
-      : ticketLauncherInline({ url: url.toString(), lang: am ? 'am' : 'en' }) }
+    { reply_markup: useInlineBuyer
+      ? ticketLauncherInline({ url: url.toString(), lang: am ? 'am' : 'en' })
+      : ticketLauncherKeyboard({ url: url.toString(), lang: am ? 'am' : 'en', seller: type === 'seller' }) }
   );
 }
 
@@ -491,11 +510,11 @@ function addMiniAppContext(url, telegramId) {
   }
 }
 
-function buildMiniAppUrl(telegramId) {
+function buildMiniAppUrl(telegramId, inline = false) {
   const url = new URL(config.miniAppUrl);
   const session = db.createWebSession(telegramId, null, 30);
-  url.searchParams.set('transport', 'inline');
-  url.searchParams.set('bot', botInfo.username);
+  url.searchParams.set('transport', inline ? 'inline' : 'keyboard');
+  if (inline) url.searchParams.set('bot', botInfo.username);
   const availability = db.availability();
   url.searchParams.set('s', session);
   url.searchParams.set('at', String(Date.now()));
