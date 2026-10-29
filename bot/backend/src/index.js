@@ -13,7 +13,7 @@ import {
 
 assertRuntimeConfig();
 
-const BOT_BUILD = '1.3.9';
+const BOT_BUILD = '1.4.0';
 
 const db = new TicketDatabase(config.dbPath, {
   reservationMinutes: config.reservationMinutes,
@@ -242,6 +242,12 @@ async function handleCommand(message, text) {
 
   if (cmd === '/version') {
     await bot.sendMessage(telegramId, `FinoteBirhan Ticket Bot v${BOT_BUILD}`);
+    return true;
+  }
+  if (cmd === '/verifystatus') {
+    if (!db.isAdmin(telegramId)) return true;
+    const health = await verifier.diagnostics();
+    await bot.sendMessage(telegramId, 'Verify.et: ' + health.status + '\\n' + health.detail);
     return true;
   }
 
