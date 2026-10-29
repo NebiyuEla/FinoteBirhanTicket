@@ -2,6 +2,7 @@ import { config, assertRuntimeConfig } from './config.js';
 import { TicketDatabase } from './db.js';
 import { TelegramBotApi, inlineKeyboard, replyKeyboard, removeKeyboard } from './telegram.js';
 import { VerifyEtClient, looksLikePaymentReference } from './verifyEt.js';
+import { ticketLauncherKeyboard } from './miniAppTransport.js';
 import { deliverReceiptToAdmins } from './adminReceipt.js';
 import { generateTicketPng } from './ticketImage.js';
 import {
@@ -185,7 +186,18 @@ async function handleUpdate(update) {
   if (!telegramId) return;
   db.ensureUser(telegramId);
 
-  if (message.web_app_data?.data) return handleWebAppData(message);
+  if (message.web_app_data?.data) {
+    try {
+      return await handleWebAppData(message);
+    } finally {
+      // Cleaning up the Telegram transport message must never delay the ticket
+      // reservation. Do it after processing, without blocking future updates.
+      if (message.chat?.id && message.message_id) {
+        void bot.deleteMessage(message.chat.id, message.message_id)
+          .catch((error) => console.warn('[webapp-message-cleanup]', error.message));
+      }
+    }
+  }
 
   const text = String(message.text || '').trim();
   if (text.startsWith('/')) {
@@ -447,7 +459,7 @@ async function sendFreshMiniAppLauncher(telegramId, type = 'buyer') {
   return bot.sendMessage(telegramId,
     am ? '🔄 የሚታዩት ቁጥሮች ከአሁኑ ዳታ ተዘምነዋል። የተያዙ እና የተሸጡ ቁጥሮች አይታዩም።'
        : '🔄 Availability is refreshed from the live database. Reserved and sold numbers are hidden.',
-    { reply_markup: inlineKeyboard([[{ text: buttonText, web_app: { url } }]]) }
+    { reply_markup: ticketLauncherKeyboard({ url: url.toString(), lang: am ? 'am' : 'en', seller: type === 'seller' }) }
   );
 }
 
@@ -463,6 +475,7 @@ function addMiniAppContext(url, telegramId) {
 function buildMiniAppUrl(telegramId) {
   const url = new URL(config.miniAppUrl);
   const session = db.createWebSession(telegramId, null, 5);
+  url.searchParams.set('transport', 'keyboard');
   const availability = db.availability();
   url.searchParams.set('s', session);
   url.searchParams.set('at', String(Date.now()));
@@ -476,6 +489,7 @@ function buildMiniAppUrl(telegramId) {
 function buildSellerMiniAppUrl(seller) {
   const url = new URL(config.miniAppUrl);
   const session = db.createWebSession(seller.telegram_id, seller.id, 5);
+  url.searchParams.set('transport', 'keyboard');
   const availability = db.availability();
   url.searchParams.set('s', session);
   url.searchParams.set('at', String(Date.now()));
@@ -728,6 +742,12 @@ Open /start and complete your normal name + phone registration. Seller access wi
 async function handlePaymentProof(message, purchase) {
   const telegramId = message.from.id;
   if (purchase.buyer_telegram_id !== telegramId) return;
+  // Receipt QR extraction is scoped to actual payment proof, never to a whole
+  // batch of pending Telegram updates (including unrelated ticket selections).
+  if ((message.photo?.length || message.document) && !message.caption) {
+    try { await bot.enrichQrFromUpload({ message }); }
+    catch (error) { console.warn('[receipt-qr]', error.message); }
+  }
   const text = String(message.text || message.caption || '').trim();
   const photo = message.photo?.at(-1)?.file_id || null;
   const document = message.document?.file_id || null;

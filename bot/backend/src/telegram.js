@@ -21,22 +21,9 @@ export class TelegramBotApi {
   }
 
   getMe() { return this.call('getMe'); }
-  async getUpdates(payload) {
-    const updates = await this.call('getUpdates', payload);
-    await Promise.all(updates.map(async (update) => {
-      try { await this.enrichQrFromUpload(update); } catch {}
-
-      // Telegram creates a visible service message when a reply-keyboard Mini App
-      // calls WebApp.sendData(): “Data from the ... button was transferred to the bot.”
-      // Remove that transport-only message immediately while keeping the web_app_data
-      // on the in-memory update so the normal purchase flow still processes it.
-      const message = update?.message;
-      if (message?.web_app_data && message?.chat?.id && message?.message_id) {
-        try { await this.deleteMessage(message.chat.id, message.message_id); } catch {}
-      }
-    }));
-    return updates;
-  }
+  // Do not wait for QR decoding or deletion of Telegram service messages here.
+  // Each batch must reach handleUpdate immediately, especially ticket selections.
+  getUpdates(payload) { return this.call('getUpdates', payload); }
   sendMessage(chatId, text, extra = {}) { return this.call('sendMessage', { chat_id: chatId, text, ...extra }); }
   editMessageText(chatId, messageId, text, extra = {}) { return this.call('editMessageText', { chat_id: chatId, message_id: messageId, text, ...extra }); }
   answerCallbackQuery(callbackQueryId, text = '', showAlert = false) {

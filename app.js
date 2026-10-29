@@ -14,6 +14,7 @@
 
   const params = new URLSearchParams(location.search);
   const session = params.get('s') || '';
+  const keyboardTransport = params.get('transport') === 'keyboard' && !tg?.initDataUnsafe?.query_id;
   const mode = params.get('mode') === 'seller' ? 'seller' : 'buyer';
   const sellerName = params.get('seller') || '';
   const sellerPayAvailable = false;
@@ -104,7 +105,7 @@
   loadTicketImages();
   applyLanguage();
 
-  if (!session || !tg?.sendData || !snapshotIsFresh()) show('error');
+  if (!session || !tg?.sendData || !keyboardTransport || !snapshotIsFresh()) show('error');
   else show(mode === 'seller' ? 'sellerCustomer' : 'ticket');
 
   document.getElementById('sellerContinue').addEventListener('click', () => {
@@ -165,7 +166,7 @@
   document.getElementById('backBtn').addEventListener('click', () => show('ticket'));
 
   confirmBtn.addEventListener('click', () => {
-    if (!snapshotIsFresh()) return show('error');
+    if (!keyboardTransport || !tg?.sendData || !snapshotIsFresh()) return show('error');
     if (!complete()) return;
     const payload = { type: mode === 'seller' ? 'seller_sale_selection' : 'ticket_selection', session, package:state.ticket, numbers:{}, lang };
     if (mode === 'seller') {
