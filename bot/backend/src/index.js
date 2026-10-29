@@ -1294,6 +1294,59 @@ async function handleCallback(query) {
   }
 }
 
+async function showRevenueReconciliation(telegramId) {
+  if (!db.isAdmin(telegramId)) return;
+  const rows = db.unreconciledPaidPurchases(12);
+  if (!rows.length) return bot.sendMessage(telegramId, '✅ No paid purchases awaiting receipt reconciliation.');
+  await bot.sendMessage(telegramId, `💰 Receipt reconciliation · ${rows.length} oldest pending\nOnly confirm after checking the actual bank/transfer statement.`);
+  for (const purchase of rows) {
+    await bot.sendMessage(telegramId,
+      `Purchase: ${purchase.id}\nBuyer: ${purchase.buyer_name || '-'}\nAmount: ${purchase.amount_etb} ETB\nNumbers: ${purchase.numbers || '-'}\nSource: ${purchase.source || '-'}`,
+      { reply_markup: inlineKeyboard([[
+        { text: '✅ Received', callback_data: `admin_receipt_yes:${purchase.id}` },
+        { text: '🚫 Not received', callback_data: `admin_receipt_no:${purchase.id}` }
+      ]]) }
+    );
+  }
+}
+
+async function showPendingPayments(telegramId) {
+  if (!db.isAdmin(telegramId)) return;
+  const rows = db.recoveryQueue(20);
+  if (!rows.length) return bot.sendMessage(telegramId, '✅ Recovery queue is empty.');
+  await bot.sendMessage(telegramId, `🚨 Recovery queue · ${rows.length} items\nReview proof and ticket ownership before approving any payment.`);
+  for (const purchase of rows) {
+    await bot.sendMessage(telegramId,
+      `Purchase: ${purchase.id}\nStatus: ${purchase.status}\nBuyer: ${purchase.buyer_name || '-'}\nAmount: ${purchase.amount_etb} ETB`,
+      { reply_markup: inlineKeyboard([[{ text: '🔎 Inspect', callback_data: `admin_recovery_inspect:${purchase.id}` }]]) }
+    );
+  }
+}
+
+async function showRecoveryInspection(telegramId, purchaseId) {
+  if (!db.isAdmin(telegramId)) return;
+  const assessment = db.assessRecoveryPurchase(purchaseId);
+  if (!assessment) return bot.sendMessage(telegramId, 'Recovery purchase not found.');
+  const { purchase, intact, availableForRestore, conflicts, hasEvidence } = assessment;
+  const canApprove = intact || availableForRestore;
+  const lines = [
+    '🔎 Recovery inspection', `Purchase: ${purchase.id}`,
+    `Status: ${purchase.status}`, `Buyer: ${purchase.buyer_name || '-'}`,
+    `Amount: ${purchase.amount_etb} ETB`,
+    `Evidence on file: ${hasEvidence ? 'YES' : 'NO'}`,
+    `Number ownership intact: ${intact ? 'YES' : 'NO'}`,
+    `Available to restore: ${availableForRestore ? 'YES' : 'NO'}`,
+    ...(conflicts.length ? ['Conflicts: ' + conflicts.join('; ')] : []),
+    'Approve only after independent payment verification.'
+  ];
+  const buttons = [];
+  if (canApprove) buttons.push({ text: '✅ Approve verified payment', callback_data: `admin_pay_ok:${purchase.id}` });
+  buttons.push({ text: '🚫 Resolve unpaid', callback_data: `admin_pay_no:${purchase.id}` });
+  await bot.sendMessage(telegramId, lines.join('\n'), {
+    reply_markup: inlineKeyboard([buttons, [{ text: '↩️ Recovery', callback_data: 'admin_payments' }]])
+  });
+}
+
 async function showAdminDashboard(telegramId) {
   const am = langOf(telegramId) !== 'en';
   if (!db.isAdmin(telegramId)) return bot.sendMessage(telegramId, am ? 'የአስተዳዳሪ ፈቃድ ያስፈልጋል።' : 'Admin access required.');
