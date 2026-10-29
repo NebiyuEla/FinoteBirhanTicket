@@ -177,8 +177,18 @@
     for (const pool of pools) payload.numbers[String(pool)] = state.numbers[pool];
     confirmBtn.disabled = true;
     confirmBtn.textContent = T[lang].sending;
-    try { tg.sendData(JSON.stringify(payload)); }
-    catch {
+    try {
+      tg.sendData(JSON.stringify(payload));
+      // sendData has no delivery acknowledgement. Never leave a permanent
+      // spinner or automatically resend: the bot may have reserved the number.
+      window.setTimeout(() => {
+        if (!confirmBtn.disabled) return;
+        confirmBtn.textContent = lang === 'am' ? 'በቦቱ ውስጥ ያረጋግጡ' : 'Check the bot chat';
+        alertMini(lang === 'am'
+          ? 'ምርጫው ተልኮ ሊሆን ይችላል። በቦቱ ውስጥ የማረጋገጫ መልዕክት ይፈትሹ። ሁለተኛ ጊዜ አይላኩ።'
+          : 'Your selection may have been sent. Check the bot chat for confirmation before trying again. Do not submit twice.');
+      }, 12000);
+    } catch {
       confirmBtn.disabled = false;
       confirmBtn.textContent = T[lang].reserveContinue;
       show('error');
