@@ -18,6 +18,9 @@
   // Older inline buttons open this exact page but silently discard sendData.
   const keyboardTransport = params.get('transport') === 'keyboard'
     && !tg?.initDataUnsafe?.query_id;
+  const botUsername = params.get('bot') || '';
+  const inlineTransport = params.get('transport') === 'inline'
+    && /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(botUsername);
 
   const mode = params.get('mode') === 'seller' ? 'seller' : 'buyer';
   const sellerName = params.get('seller') || '';
@@ -170,7 +173,7 @@
   confirmBtn.addEventListener('click', () => {
     if (!snapshotIsFresh()) return show('error');
     if (!complete()) return;
-    if (!keyboardTransport || typeof tg?.sendData !== 'function') {
+    if (!inlineTransport && (!keyboardTransport || typeof tg?.sendData !== 'function')) {
       alertMini(lang === 'am'
         ? 'ይህ ገጽ በቀድሞ የቴሌግራም ቁልፍ ተከፍቷል። ወደ ቦቱ ተመልሰው “ትኬት ይግዙ” ይጫኑ፤ ከዚያ “ትኬቶችን ክፈት” የሚለውን የኪቦርድ ቁልፍ ይጫኑ።'
         : 'This ticket page was opened from an old Telegram button. Return to the bot, tap Buy Ticket, then use the Open live tickets keyboard button.');
@@ -184,6 +187,37 @@
     }
     const pools = state.ticket === 'bundle' ? [200,100,50] : [Number(state.ticket)];
     for (const pool of pools) payload.numbers[String(pool)] = state.numbers[pool];
+
+    if (inlineTransport && mode === 'buyer') {
+      // Inline Telegram Mini Apps cannot use sendData. A Telegram deep link
+      // delivers the selected ticket through the existing bot /start handler.
+      // The backend still validates the one-use user-bound session and number.
+      if (!/^[A-Za-z0-9_-]{24}$/.test(session)) return show('error');
+      const code = state.ticket === 'bundle' ? 'b'
+        : ({ '200': '2', '100': '1', '50': '5' })[state.ticket];
+      if (!code) return show('error');
+      const numbers = pools.map((pool) => String(state.numbers[pool]).padStart(3, '0')).join('');
+      const start = 't_' + session + '_' + code + '_' + numbers;
+      if (start.length > 64) return show('error');
+      const link = 'https://t.me/' + botUsername + '?start=' + start;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = lang === 'am' ? 'በቴሌግራም Start ይጫኑ' : 'Tap Start in Telegram';
+      try {
+        if (typeof tg?.openTelegramLink === 'function') tg.openTelegramLink(link);
+        else window.location.assign(link);
+      } catch {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = T[lang].reserveContinue;
+        alertMini(lang === 'am' ? 'ቦቱን መክፈት አልተቻለም።' : 'Could not open the bot.');
+        return;
+      }
+      setTimeout(() => {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = T[lang].reserveContinue;
+      }, 8000);
+      return;
+    }
+
     confirmBtn.disabled = true;
     confirmBtn.textContent = T[lang].sending;
     let sent = false;
