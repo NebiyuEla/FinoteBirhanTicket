@@ -5,6 +5,7 @@ import { VerifyEtClient, looksLikePaymentReference } from './verifyEt.js';
 import { ticketLauncherKeyboard } from './miniAppTransport.js';
 import { deliverReceiptToAdmins } from './adminReceipt.js';
 import { generateTicketPng } from './ticketImage.js';
+import { processUpdateBatch } from './updateDispatcher.js';
 import {
   amountForPackage, csvEscape, encodeUnavailableBitset, formatNumber, htmlEscape,
   maskPhone, normalizePhone, packagePools, safeJsonParse, shortCode, truncate
@@ -62,15 +63,15 @@ async function main() {
         timeout: 30,
         allowed_updates: ['message', 'callback_query']
       });
-      for (const update of updates) {
-        offset = update.update_id + 1;
-        try {
-          await handleUpdate(update);
-        } catch (error) {
+      if (updates.length) {
+        // Telegram acknowledges the batch on the next poll. Keep each chat in
+        // order, but never block unrelated chats behind a slow payment check.
+        offset = updates.at(-1).update_id + 1;
+        await processUpdateBatch(updates, handleUpdate, async (update, error) => {
           console.error('[update]', update.update_id, error);
           const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
           if (chatId) await safeSend(chatId, 'Something went wrong. Please try again.');
-        }
+        });
       }
     } catch (error) {
       if (!stopping) {
