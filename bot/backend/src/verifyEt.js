@@ -105,6 +105,23 @@ export class VerifyEtClient {
 
   get enabled() { return Boolean(this.apiKey); }
 
+  // Read-only health check for administrators. No transaction is submitted,
+  // no verification credits are consumed and the API key is never exposed.
+  async diagnostics() {
+    if (!this.enabled) return { status: 'missing_key', detail: 'VERIFY_ET_API_KEY is not configured.' };
+    try {
+      const response = await fetch(this.baseUrl + '/api/verify/history?limit=1', {
+        headers: { 'x-api-key': this.apiKey },
+        signal: AbortSignal.timeout(10000)
+      });
+      return response.ok
+        ? { status: 'authenticated', detail: 'API key has verification:read access. Verification credits are not checked.' }
+        : { status: 'api_error', detail: 'Verify.et returned HTTP ' + response.status + ' for a read-only API check.' };
+    } catch {
+      return { status: 'unreachable', detail: 'Verify.et is not reachable from this bot host.' };
+    }
+  }
+
   async verify({ provider, reference, accountNumber, expectedAmount, expectedAccountName, expectedAccountNumber }) {
     if (!this.enabled) return { outcome: 'manual_review', reason: 'Verify.et API key is not configured.' };
     const payload = buildVerificationPayload({ provider, reference, accountNumber });
