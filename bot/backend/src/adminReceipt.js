@@ -33,7 +33,7 @@ export async function deliverReceiptToAdmins({ bot, adminIds, purchase, message,
 
   const caption = receiptAdminCaption(purchase);
   let delivered = 0;
-  for (const adminId of admins) {
+  await Promise.all(admins.map(async (adminId) => {
     try {
       await bot.copyMessage(adminId, message.chat.id, message.message_id, { caption });
       delivered++;
@@ -53,7 +53,7 @@ export async function deliverReceiptToAdmins({ bot, adminIds, purchase, message,
           'purchase', purchase.id, 'copy:', copyError?.message, 'fallback:', sendError?.message);
       }
     }
-  }
+  }));
 
   return { attempted: admins.length, delivered, failed };
 }
