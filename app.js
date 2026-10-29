@@ -14,6 +14,11 @@
 
   const params = new URLSearchParams(location.search);
   const session = params.get('s') || '';
+  // sendData is delivered only for Telegram reply-keyboard Mini Apps.
+  // Older inline buttons open this exact page but silently discard sendData.
+  const keyboardTransport = params.get('transport') === 'keyboard'
+    && !tg?.initDataUnsafe?.query_id;
+
   const mode = params.get('mode') === 'seller' ? 'seller' : 'buyer';
   const sellerName = params.get('seller') || '';
   const sellerPayAvailable = false;
@@ -165,6 +170,12 @@
   confirmBtn.addEventListener('click', () => {
     if (!snapshotIsFresh()) return show('error');
     if (!complete()) return;
+    if (!keyboardTransport || typeof tg?.sendData !== 'function') {
+      alertMini(lang === 'am'
+        ? 'ይህ ገጽ በቀድሞ የቴሌግራም ቁልፍ ተከፍቷል። ወደ ቦቱ ተመልሰው “ትኬት ይግዙ” ይጫኑ፤ ከዚያ “ትኬቶችን ክፈት” የሚለውን የኪቦርድ ቁልፍ ይጫኑ።'
+        : 'This ticket page was opened from an old Telegram button. Return to the bot, tap Buy Ticket, then use the Open live tickets keyboard button.');
+      return;
+    }
     const payload = { type: mode === 'seller' ? 'seller_sale_selection' : 'ticket_selection', session, package:state.ticket, numbers:{}, lang };
     if (mode === 'seller') {
       payload.buyer_name = state.buyerName;
