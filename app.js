@@ -110,8 +110,8 @@
   loadTicketImages();
   applyLanguage();
 
-  if (!session || !tg?.sendData || !snapshotIsFresh()) show('error');
-  else show(mode === 'seller' ? 'sellerCustomer' : 'ticket');
+  if (!session || !snapshotIsFresh() || (!inlineTransport && typeof tg?.sendData !== 'function')) show('error');
+  else show(mode === 'seller' && !inlineTransport ? 'sellerCustomer' : 'ticket');
 
   document.getElementById('sellerContinue').addEventListener('click', () => {
     const name = String(buyerNameInput.value || '').trim().replace(/\s+/g, ' ');
@@ -140,7 +140,7 @@
     if (!snapshotIsFresh()) return show('error');
     const card = event.target.closest('[data-ticket]');
     if (!card) return;
-    if (mode === 'seller' && (!state.buyerName || !state.buyerPhone)) return show('sellerCustomer');
+    if (mode === 'seller' && !inlineTransport && (!state.buyerName || !state.buyerPhone)) return show('sellerCustomer');
     state.ticket = card.dataset.ticket;
     state.numbers = {200:null,100:null,50:null};
     state.activePool = state.ticket === 'bundle' ? 200 : Number(state.ticket);
@@ -173,7 +173,7 @@
   confirmBtn.addEventListener('click', () => {
     if (!snapshotIsFresh()) return show('error');
     if (!complete()) return;
-    if (!((inlineTransport && mode === 'buyer') || (keyboardTransport && typeof tg?.sendData === 'function'))) {
+    if (!(inlineTransport || (keyboardTransport && typeof tg?.sendData === 'function'))) {
       alertMini(lang === 'am'
         ? 'ይህ ገጽ በቀድሞ የቴሌግራም ቁልፍ ተከፍቷል። ወደ ቦቱ ተመልሰው “ትኬት ይግዙ” ይጫኑ፤ ከዚያ “ትኬቶችን ክፈት” የሚለውን የኪቦርድ ቁልፍ ይጫኑ።'
         : 'This ticket page was opened from an old Telegram button. Return to the bot, tap Buy Ticket, then use the Open live tickets keyboard button.');
@@ -188,16 +188,16 @@
     const pools = state.ticket === 'bundle' ? [200,100,50] : [Number(state.ticket)];
     for (const pool of pools) payload.numbers[String(pool)] = state.numbers[pool];
 
-    if (inlineTransport && mode === 'buyer') {
-      // Inline Telegram Mini Apps cannot use sendData. A Telegram deep link
-      // delivers the selected ticket through the existing bot /start handler.
+    if (inlineTransport) {
+      // Inline Telegram Mini Apps cannot use sendData. The deep link carries a
+      // one-use ticket selection only; seller buyer details stay in the bot chat.
       // The backend still validates the one-use user-bound session and number.
       if (!/^[A-Za-z0-9_-]{24}$/.test(session)) return show('error');
       const code = state.ticket === 'bundle' ? 'b'
         : ({ '200': '2', '100': '1', '50': '5' })[state.ticket];
       if (!code) return show('error');
       const numbers = pools.map((pool) => String(state.numbers[pool]).padStart(3, '0')).join('');
-      const start = 't_' + session + '_' + code + '_' + numbers;
+      const start = (mode === 'seller' ? 's_' : 't_') + session + '_' + code + '_' + numbers;
       if (start.length > 64) return show('error');
       const link = 'https://t.me/' + botUsername + '?start=' + start;
       confirmBtn.disabled = true;
@@ -283,7 +283,9 @@
     });
     document.querySelectorAll('[data-lang-control],#langToggle').forEach((button) => { button.textContent = lang === 'am' ? 'EN' : 'አማ'; });
     buyerNameInput.placeholder = T[lang].fullNamePlaceholder;
-    sellerLine.textContent = mode === 'seller' ? `${sellerName || T[lang].sellerMode} · ${T[lang].sellerMode}` : T[lang].chooseTicket;
+    sellerLine.textContent = mode === 'seller'
+      ? `${sellerName || T[lang].sellerMode} · ${inlineTransport ? (lang === 'am' ? 'ትኬት ይምረጡ፤ የገዢውን መረጃ በቦቱ ያስገቡ' : 'Choose a ticket; enter buyer details in bot') : T[lang].sellerMode}`
+      : T[lang].chooseTicket;
     paySeller.textContent = sellerPayAvailable ? T[lang].sellerAccount : T[lang].sellerUnconfigured;
     document.getElementById('prize200').textContent = prizeNames[lang][200];
     document.getElementById('prize100').textContent = prizeNames[lang][100];

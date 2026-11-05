@@ -812,8 +812,8 @@ export class TicketDatabase {
     if (cleanName.length < 3 || cleanName.length > 80) throw new Error('Enter the buyer full name.');
     if (!cleanPhone) throw new Error('Enter a valid Ethiopian buyer phone number.');
     // Every seller sale belongs to FinoteBirhan. If a buyer pays cash, the seller
-    // still settles that cash to FinoteBirhan; a seller-owned destination must not
-    // create a separate revenue bucket or allow self-confirmation.
+    // still settles that cash to FinoteBirhan; seller confirmation must not
+    // falsely mark bank settlement as independently verified.
     const normalizedPaymentTarget = 'finote';
 
     const pools = packagePools(packageType);
@@ -947,13 +947,32 @@ export class TicketDatabase {
     return this.getPurchase(purchaseId);
   }
 
-  confirmPurchase(purchaseId, reviewerId, { verificationPayload = null, note = null, receiptVerified = false, receiptMethod = null } = {}) {
+  confirmSellerSale(purchaseId, sellerTelegramId) {
+    const seller = this.db.prepare(`SELECT * FROM sellers WHERE telegram_id=? AND status='approved'`).get(sellerTelegramId);
+    const purchase = this.getPurchase(purchaseId);
+    if (!seller || !purchase || purchase.seller_id !== seller.id || purchase.source !== 'seller') {
+      throw new Error('Seller sale not found or access denied.');
+    }
+    if (purchase.status === 'paid') return purchase;
+    const confirmed = this.confirmPurchase(purchaseId, sellerTelegramId, {
+      sellerAttested: true,
+      receiptMethod: 'seller_attestation',
+      note: 'Seller attested buyer paid. Bank settlement is not independently verified.'
+    });
+    this.log(sellerTelegramId, 'seller_sale.confirmed_by_seller', 'purchase', purchaseId, {});
+    return confirmed;
+  }
+
+  confirmPurchase(purchaseId, reviewerId, { verificationPayload = null, note = null, receiptVerified = false, receiptMethod = null, sellerAttested = false } = {}) {
     const purchase = this.getPurchase(purchaseId);
     if (!purchase) throw new Error('Purchase not found.');
     if (purchase.status === 'paid') return purchase;
     if (!['verification_pending', 'seller_review', 'manual_review', 'awaiting_proof'].includes(purchase.status)) throw new Error(`Purchase cannot be confirmed from status ${purchase.status}.`);
     if (purchase.source === 'seller' && !this.isAdmin(reviewerId)) {
-      throw new Error('Seller-originated sales require FinoteBirhan admin payment approval before tickets can be marked sold.');
+      const seller = sellerAttested && this.db.prepare(`SELECT id FROM sellers WHERE telegram_id=? AND status='approved'`).get(reviewerId);
+      if (!seller || seller.id !== purchase.seller_id) {
+        throw new Error('Seller-originated sales require FinoteBirhan admin payment approval unless confirmed by the assigned approved seller.');
+      }
     }
     const now = nowIso();
     const receiptConfirmed = receiptVerified === true || this.isAdmin(reviewerId);

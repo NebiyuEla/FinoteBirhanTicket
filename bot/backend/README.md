@@ -17,13 +17,14 @@ Ticket Sellers are activated only by an admin using `/addseller TELEGRAM_ID` or 
 There is no public seller registration and no seller customer-link flow.
 
 An active Ticket Seller gets:
-- `🧾 Sell Tickets` Mini App
+- `🧾 Sell Tickets` Mini App (in-chat button when compatible frontend is deployed; buyer name and phone collected privately in bot after selecting the numbers)
 - `📈 Seller Stats`
 - `💳 Seller Account`
 
 In Sell Tickets the seller enters the buyer full name and phone, chooses whether payment goes to FinoteBirhan or the seller's configured account, chooses package + number, and then manually taps `SOLD` only after payment is confirmed.
 
-After SOLD:
+After seller confirms buyer payment:
+- admin is not messaged for approval; the seller's confirmation is audited and bank settlement remains unreconciled until independently confirmed
 - ticket is issued immediately
 - seller receives the digital PNG ticket to forward
 - if a registered bot user matches the buyer phone or exact normalized full name, the ticket is linked and delivered automatically

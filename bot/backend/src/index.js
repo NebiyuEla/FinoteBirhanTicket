@@ -2,7 +2,7 @@ import { config, assertRuntimeConfig } from './config.js';
 import { TicketDatabase } from './db.js';
 import { TelegramBotApi, inlineKeyboard, replyKeyboard, removeKeyboard } from './telegram.js';
 import { VerifyEtClient, looksLikePaymentReference, extractPaymentReference, parsePaymentReference } from './verifyEt.js';
-import { ticketLauncherKeyboard, ticketLauncherInline, parseBuyerTicketDeepLink } from './miniAppTransport.js';
+import { ticketLauncherKeyboard, ticketLauncherInline, parseBuyerTicketDeepLink, parseSellerTicketDeepLink } from './miniAppTransport.js';
 import { deliverReceiptToAdmins } from './adminReceipt.js';
 import { generateTicketPng } from './ticketImage.js';
 import { processUpdateBatch } from './updateDispatcher.js';
@@ -40,6 +40,7 @@ let botInfo = null;
 let stopping = false;
 let offset = 0;
 let inlineBuyerFrontendReady = false;
+let inlineSellerFrontendReady = false;
 
 async function probeInlineBuyerFrontend() {
   // Never turn on inline launcher until its matching JavaScript is genuinely
@@ -51,8 +52,10 @@ async function probeInlineBuyerFrontend() {
     });
     const html = response.ok ? await response.text() : '';
     inlineBuyerFrontendReady = html.includes('app.js?v=20261029-inline-ticket-');
+    inlineSellerFrontendReady = html.includes('20261105-inline-seller-v1');
   } catch {
     inlineBuyerFrontendReady = false;
+    inlineSellerFrontendReady = false;
   }
 }
 
@@ -273,6 +276,19 @@ async function handleCommand(message, text) {
     // The original in-message ticket launcher returns selected numbers through
     // Telegram's own /start deep-link. This is not an unauthenticated purchase:
     // handleWebAppData checks that the one-use session belongs to this user.
+    const sellerSelection = parseSellerTicketDeepLink(args);
+    if (sellerSelection) {
+      const seller = db.getSellerByTelegram(telegramId);
+      const session = db.getUsableWebSession(sellerSelection.session, telegramId);
+      if (!seller || seller.status !== 'approved' || !session || Number(session.seller_id) !== Number(seller.id)) {
+        await bot.sendMessage(telegramId, tr(telegramId, 'የሻጭ ምርጫው አልፎታል። ከምናሌው እንደገና ይክፈቱ።', 'Seller selection expired. Open Sell Tickets again.'));
+        await sendMainMenu(telegramId);
+        return true;
+      }
+      db.setUserState(telegramId, 'seller_sale_buyer_name', { selection: sellerSelection });
+      await bot.sendMessage(telegramId, tr(telegramId, '👤 ለተመረጠው ትኬት የገዢውን ሙሉ ስም ይላኩ።', '👤 Send the buyer full name for the selected ticket.'));
+      return true;
+    }
     const selection = parseBuyerTicketDeepLink(args);
     if (selection) {
       return handleWebAppData({
@@ -479,6 +495,7 @@ async function sendFreshMiniAppLauncher(telegramId, type = 'buyer') {
   }
   const am = langOf(telegramId) !== 'en';
   const useInlineBuyer = type !== 'seller' && inlineBuyerFrontendReady;
+  const useInlineSeller = type === 'seller' && inlineSellerFrontendReady;
   let url;
   let buttonText;
   if (type === 'seller') {
@@ -486,7 +503,7 @@ async function sendFreshMiniAppLauncher(telegramId, type = 'buyer') {
     if (!seller || seller.status !== 'approved') {
       return bot.sendMessage(telegramId, am ? 'የትኬት ሻጭ ፈቃድዎ ንቁ አይደለም።' : 'Ticket Seller access is not active.');
     }
-    url = buildSellerMiniAppUrl(seller);
+    url = buildSellerMiniAppUrl(seller, useInlineSeller);
     buttonText = am ? '🧾 ትኬቶችን ክፈት' : '🧾 Open live tickets';
   } else {
     url = buildMiniAppUrl(telegramId, useInlineBuyer);
@@ -495,8 +512,8 @@ async function sendFreshMiniAppLauncher(telegramId, type = 'buyer') {
   return bot.sendMessage(telegramId,
     am ? '🔄 የሚታዩት ቁጥሮች ከአሁኑ ዳታ ተዘምነዋል። የተያዙ እና የተሸጡ ቁጥሮች አይታዩም።'
        : '🔄 Availability is refreshed from the live database. Reserved and sold numbers are hidden.',
-    { reply_markup: useInlineBuyer
-      ? ticketLauncherInline({ url: url.toString(), lang: am ? 'am' : 'en' })
+    { reply_markup: useInlineBuyer || useInlineSeller
+      ? ticketLauncherInline({ url: url.toString(), lang: am ? 'am' : 'en', seller: type === 'seller' })
       : ticketLauncherKeyboard({ url: url.toString(), lang: am ? 'am' : 'en', seller: type === 'seller' }) }
   );
 }
@@ -525,10 +542,11 @@ function buildMiniAppUrl(telegramId, inline = false) {
   return url.toString();
 }
 
-function buildSellerMiniAppUrl(seller) {
+function buildSellerMiniAppUrl(seller, inline = false) {
   const url = new URL(config.miniAppUrl);
   const session = db.createWebSession(seller.telegram_id, seller.id, 30);
-  url.searchParams.set('transport', 'keyboard');
+  url.searchParams.set('transport', inline ? 'inline' : 'keyboard');
+  if (inline) url.searchParams.set('bot', botInfo.username);
   const availability = db.availability();
   url.searchParams.set('s', session);
   url.searchParams.set('at', String(Date.now()));
@@ -658,7 +676,7 @@ async function sendSellerSaleCheckout(sellerTelegramId, purchase) {
   }
   const linked = purchase.linked_telegram_id
     ? (am ? `
-✅ ገዢው ቦቱን ተመዝግቧል፤ “ተሽጧል” ሲጫኑ ትኬቱ በቀጥታ ይላካል።` : `
+✅ ገዢው ቦቱን ተመዝግቧል፤ “ገዢው ከፍሏል” ሲጫኑ ትኬቱ በቀጥታ ይላካል።` : `
 ✅ Buyer already has the bot — the ticket will be delivered automatically after you mark it sold.`)
     : (am ? `
 ℹ️ ገዢው ገና ከቦቱ ጋር አልተገናኘም። በዚሁ ስም ወይም ስልክ ሲመዘገብ ትኬቱ በራሱ ይገናኛል።` : `
@@ -691,7 +709,7 @@ ${provider}
 ${accountName}
 ${accountNumber}${linked}
 
-For cash, first settle the money to FinoteBirhan. Tap Buyer paid only after payment is complete; an admin must approve before the ticket becomes SOLD.`,
+For cash, first settle the money to FinoteBirhan. Tap Buyer paid only after you have verified payment. The ticket is issued immediately; bank settlement is tracked separately.`,
     { reply_markup: inlineKeyboard([[{ text: am ? '✅ ገዢው ከፍሏል' : '✅ Buyer paid', callback_data: `seller_ok:${purchase.id}` }, { text: am ? '❌ ሽያጩን ሰርዝ' : '❌ Cancel sale', callback_data: `seller_no:${purchase.id}` }]]) }
   );
 }
@@ -745,6 +763,10 @@ async function handleStateMessage(message, state) {
     if (!purchase) { db.clearUserState(telegramId); return false; }
     return handlePaymentProof(message, purchase).then(() => true);
   }
+  if (state.state.startsWith('seller_sale_')) {
+    await handleSellerInlineState(message, state);
+    return true;
+  }
   if (state.state.startsWith('seller_account_')) {
     await handleSellerAccountState(message, state);
     return true;
@@ -776,6 +798,51 @@ Open /start and complete your normal name + phone registration. Seller access wi
     return showPendingSellers(telegramId);
   }
   return false;
+}
+
+async function handleSellerInlineState(message, state) {
+  const telegramId = message.from.id;
+  const seller = db.getSellerByTelegram(telegramId);
+  const selection = state.data?.selection;
+  const session = selection && db.getUsableWebSession(selection.session, telegramId);
+  if (!seller || seller.status !== 'approved' || !session || Number(session.seller_id) !== Number(seller.id)) {
+    db.clearUserState(telegramId);
+    await bot.sendMessage(telegramId, tr(telegramId, 'የሽያጩ ጊዜ አልፏል። ትኬቱን እንደገና ይምረጡ።', 'This selection expired. Please choose the ticket again.'));
+    return sendFreshMiniAppLauncher(telegramId, 'seller');
+  }
+  const input = String(message.text || '').trim().replace(/\\s+/g, ' ');
+  if (state.state === 'seller_sale_buyer_name') {
+    if (input.length < 3 || input.length > 80) {
+      await bot.sendMessage(telegramId, tr(telegramId, 'የገዢውን ሙሉ ስም ያስገቡ (3–80 ፊደላት)።', 'Enter the buyer full name (3–80 characters).'));
+      return;
+    }
+    db.setUserState(telegramId, 'seller_sale_buyer_phone', { selection, buyerName: input });
+    await bot.sendMessage(telegramId, tr(telegramId, '📱 የገዢውን ስልክ ቁጥር ይላኩ።', '📱 Send the buyer phone number.'));
+    return;
+  }
+  if (state.state === 'seller_sale_buyer_phone') {
+    const buyerPhone = normalizePhone(input);
+    if (!buyerPhone) {
+      await bot.sendMessage(telegramId, tr(telegramId, 'ትክክለኛ የኢትዮጵያ ስልክ ቁጥር ይላኩ።', 'Send a valid Ethiopian phone number.'));
+      return;
+    }
+    let purchase;
+    try {
+      purchase = db.reserveSellerSale({
+        sellerTelegramId: telegramId, buyerName: state.data.buyerName,
+        buyerPhone, packageType: selection.package, selectedNumbers: selection.numbers,
+        paymentTarget: 'finote'
+      });
+      db.consumeWebSession(selection.session, telegramId);
+      db.clearUserState(telegramId);
+    } catch (error) {
+      db.clearUserState(telegramId);
+      await bot.sendMessage(telegramId, `⚠️ ${error.message}`);
+      return sendFreshMiniAppLauncher(telegramId, 'seller');
+    }
+    return beginSellerPaymentAccountSelection(telegramId, purchase);
+  }
+  db.clearUserState(telegramId);
 }
 
 async function handlePaymentProof(message, purchase) {
@@ -1228,15 +1295,22 @@ async function handleCallback(query) {
       return bot.answerCallbackQuery(query.id, 'Not allowed.', true).catch(() => {});
     }
     if (data.startsWith('seller_ok:')) {
-      let reviewPurchase;
-      try { reviewPurchase = db.markSellerPaymentClaimed(purchaseId, telegramId); }
+      if (purchase.status === 'paid') {
+        return bot.sendMessage(telegramId, tr(telegramId, 'ይህ ትኬት አስቀድሞ ተሽጧል።', 'This ticket is already sold.'));
+      }
+      let paid;
+      try { paid = db.confirmSellerSale(purchaseId, telegramId); }
       catch (error) { return bot.sendMessage(telegramId, `⚠️ ${error.message}`); }
-      const numbers = reviewPurchase.numbers.map((n) => `${n.pool} ETB #${formatNumber(n.number)}`).join(' · ');
-      await notifyAdmins(`💳 SELLER SALE PAYMENT REVIEW\n\nSeller: ${seller.display_name}\nBuyer: ${purchase.buyer_name}\nPhone: ${purchase.buyer_phone}\nPackage: ${purchase.package_type}\nAmount: ${purchase.amount_etb} ETB\nNumbers: ${numbers || '-'}\n\nSeller says the buyer paid. Confirm only after FinoteBirhan has actually received/verified the money.`, inlineKeyboard([[
-        { text: '✅ Approve payment', callback_data: `admin_pay_ok:${purchase.id}` },
-        { text: '❌ Reject', callback_data: `admin_pay_no:${purchase.id}` }
-      ]]));
-      await bot.sendMessage(telegramId, tr(telegramId, '⏳ ክፍያው ለአስተዳዳሪ ማረጋገጫ ተልኳል። እስኪፈቀድ ድረስ ትኬቱ SOLD አይሆንም።', '⏳ Sent for FinoteBirhan admin payment approval. The ticket will not become SOLD until approved.'));
+      await bot.sendMessage(telegramId, tr(telegramId,
+        '✅ ሽያጩ ተመዝግቧል፤ ትኬቱ ተሰጥቷል። የባንክ ደረሰኝ ግን ገና በተናጠል አልተረጋገጠም።',
+        '✅ Seller-confirmed sale. Ticket issued. Bank settlement is still unverified.'));
+      await sendIssuedTickets(telegramId, purchaseId);
+      if (paid.linked_telegram_id && paid.linked_telegram_id !== telegramId) {
+        await safeSend(paid.linked_telegram_id, tr(paid.linked_telegram_id,
+          '🎟 በስምዎ የተሸጠ ትኬት ተመዝግቧል።',
+          '🎟 A seller-issued ticket was registered in your name.'));
+        await sendIssuedTickets(paid.linked_telegram_id, purchaseId);
+      }
       return;
     } else {
       db.cancelPurchase(purchaseId, telegramId, `Cancelled by ticket seller ${seller.display_name}`);

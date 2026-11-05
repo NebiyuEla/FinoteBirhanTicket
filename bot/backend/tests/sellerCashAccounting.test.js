@@ -112,6 +112,26 @@ test('seller sale cannot become paid until an admin approves it and seller targe
   }
 });
 
+test('approved seller can issue own paid ticket without notifying admin or claiming verified bank settlement', () => {
+  const { db, dir } = makeDb();
+  try {
+    const sale = db.reserveSellerSale({
+      sellerTelegramId: 3, buyerName: 'Verified Buyer', buyerPhone: '0912345678',
+      packageType: '50', selectedNumbers: { 50: 91 }
+    });
+    assert.throws(() => db.confirmSellerSale(sale.id, 1), /access denied/);
+    const paid = db.confirmSellerSale(sale.id, 3);
+    assert.equal(paid.status, 'paid');
+    assert.equal(paid.receipt_status, 'unreconciled');
+    assert.equal(db.ticketsForPurchase(sale.id).length, 1);
+    assert.equal(db.dashboardStats().revenue, 0);
+    assert.equal(db.dashboardStats().unreconciledRevenue, 50);
+    assert.equal(db.confirmSellerSale(sale.id, 3).status, 'paid');
+  } finally {
+    db.close(); fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('canonical package amount migration fixes malformed historical amounts', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'finote-canonical-prices-'));
   const dbPath = path.join(dir, 'test.sqlite');

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { ticketLauncherKeyboard, ticketLauncherInline, parseBuyerTicketDeepLink } from '../src/miniAppTransport.js';
+import { ticketLauncherKeyboard, ticketLauncherInline, parseBuyerTicketDeepLink, parseSellerTicketDeepLink } from '../src/miniAppTransport.js';
 
 const replyUrl = 'https://finotebirhan-ticket.vercel.app/?s=test&transport=keyboard';
 const inlineUrl = 'https://finotebirhan-ticket.vercel.app/?s=test&transport=inline&bot=FinoteBirhanLotteryBot';
@@ -20,6 +20,23 @@ test('seller still uses Telegram keyboard launch supported by sendData', () => {
   assert.equal(markup.keyboard[0][0].web_app.url, replyUrl);
   assert.equal(markup.inline_keyboard, undefined);
   assert.equal(markup.one_time_keyboard, true);
+});
+
+test('seller opens from an in-chat Mini App button without replacing the bot menu keyboard', () => {
+  const url = inlineUrl + '&mode=seller';
+  const markup = ticketLauncherInline({ url, lang: 'en', seller: true });
+  assert.equal(markup.inline_keyboard[0][0].web_app.url, url);
+  assert.equal(markup.inline_keyboard[0][0].text, '🧾 Open seller tickets');
+  assert.equal(markup.keyboard, undefined);
+});
+
+test('seller deep link carries only authenticated selection, no private buyer details', () => {
+  const session = 'abcdefghijklmnopqrstuvwx';
+  assert.deepEqual(parseSellerTicketDeepLink('s_' + session + '_b_001002003'), {
+    type: 'seller_sale_selection', session, package: 'bundle', numbers: { 200: 1, 100: 2, 50: 3 }
+  });
+  assert.equal(parseSellerTicketDeepLink('s_' + session + '_2_999'), null);
+  assert.equal(parseSellerTicketDeepLink('t_' + session + '_2_001'), null);
 });
 
 test('rejects malformed inline launchers and insecure URLs', () => {
@@ -84,5 +101,7 @@ test('backend retains working reply-keyboard tickets until matching Vercel front
   const source = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
   assert.match(source, /inlineBuyerFrontendReady = html\.includes\('app\.js\?v=20261029-inline-ticket-'\)/);
   assert.match(source, /const useInlineBuyer = type !== 'seller' && inlineBuyerFrontendReady/);
+  assert.match(source, /const useInlineSeller = type === 'seller' && inlineSellerFrontendReady/);
+  assert.match(source, /parseSellerTicketDeepLink\(args\)/);
   assert.match(source, /ticketLauncherKeyboard\(\{ url: url\.toString\(\), lang: am \? 'am' : 'en', seller: type === 'seller' \}\)/);
 });

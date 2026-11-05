@@ -23,7 +23,7 @@ export function ticketLauncherKeyboard({ url, lang = 'am', seller = false }) {
  * deliver sendData() from inline launches, so buyer selection returns to the
  * bot through an authenticated, short /start deep-link payload.
  */
-export function ticketLauncherInline({ url, lang = 'am' }) {
+export function ticketLauncherInline({ url, lang = 'am', seller = false }) {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:' || parsed.searchParams.get('transport') !== 'inline' ||
       !/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(parsed.searchParams.get('bot') || '')) {
@@ -31,7 +31,9 @@ export function ticketLauncherInline({ url, lang = 'am' }) {
   }
   return {
     inline_keyboard: [[{
-      text: lang === 'en' ? '🎟 Open live tickets' : '🎟 ትኬቶችን ክፈት',
+      text: seller
+        ? (lang === 'en' ? '🧾 Open seller tickets' : '🧾 የሽያጭ ትኬቶችን ክፈት')
+        : (lang === 'en' ? '🎟 Open live tickets' : '🎟 ትኬቶችን ክፈት'),
       web_app: { url }
     }]]
   };
@@ -52,4 +54,12 @@ export function parseBuyerTicketDeepLink(parameter) {
     numbers[String(pools[i])] = number;
   }
   return { type: 'ticket_selection', session, package: bundle ? 'bundle' : String(pools[0]), numbers };
+}
+
+/** Seller selections include no buyer PII; collect it in the authenticated bot chat. */
+export function parseSellerTicketDeepLink(parameter) {
+  const input = String(parameter || '');
+  if (!input.startsWith('s_')) return null;
+  const selection = parseBuyerTicketDeepLink('t_' + input.slice(2));
+  return selection ? { ...selection, type: 'seller_sale_selection' } : null;
 }
