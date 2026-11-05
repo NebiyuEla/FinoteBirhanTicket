@@ -4,12 +4,24 @@
   const tg = window.Telegram?.WebApp;
   if (tg) {
     tg.ready();
-    tg.expand();
+    // Keyboard- and inline-launched Mini Apps otherwise start as small Telegram
+    // bottom sheets. Prefer fullscreen where supported; keep swipe-to-expand
+    // available as a fallback on older clients.
+    const expand = () => { try { tg.expand(); } catch {} };
+    expand();
     try {
       tg.setHeaderColor('#fffdf8');
       tg.setBackgroundColor('#f7f1e7');
-      if (typeof tg.disableVerticalSwipes === 'function') tg.disableVerticalSwipes();
-    } catch {}
+      if (typeof tg.onEvent === 'function') {
+        tg.onEvent('fullscreenFailed', expand);
+        tg.onEvent('fullscreenChanged', syncViewportHeight);
+      }
+      if (typeof tg.requestFullscreen === 'function' &&
+          (typeof tg.isVersionAtLeast !== 'function' || tg.isVersionAtLeast('8.0')) &&
+          !tg.isFullscreen) {
+        tg.requestFullscreen();
+      }
+    } catch { expand(); }
   }
 
   const params = new URLSearchParams(location.search);
@@ -100,9 +112,8 @@
   syncViewportHeight();
   if (tg?.onEvent) tg.onEvent('viewportChanged', syncViewportHeight);
   window.addEventListener('resize', syncViewportHeight, { passive:true });
-  document.addEventListener('touchmove', (event) => {
-    if (!event.target.closest('.number-grid') && !event.target.closest('.ticket-scroll') && !event.target.closest('input') && !event.target.closest('.seller-note')) event.preventDefault();
-  }, { passive:false });
+  // Allow Telegram's swipe-to-expand gesture on clients without fullscreen.
+  // Ticket and number lists remain independently scrollable via CSS.
 
   document.querySelectorAll('[data-lang-control],#langToggle').forEach((button) => button.addEventListener('click', toggleLanguage));
   paySeller.disabled = true;

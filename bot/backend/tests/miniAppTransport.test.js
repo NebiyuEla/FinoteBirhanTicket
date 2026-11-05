@@ -106,3 +106,24 @@ test('backend retains working reply-keyboard tickets until matching Vercel front
   assert.match(source, /parseSellerTicketDeepLink\(args\)/);
   assert.match(source, /ticketLauncherKeyboard\(\{ url: url\.toString\(\), lang: am \? 'am' : 'en', seller: type === 'seller' \}\)/);
 });
+
+test('Mini App expands or requests fullscreen without trapping Telegram bottom-sheet swipes', () => {
+  const source = fs.readFileSync(new URL('../../../app.js', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../../../styles.css', import.meta.url), 'utf8');
+  assert.match(source, /tg\.expand\(\)/);
+  assert.match(source, /tg\.requestFullscreen\(\)/);
+  assert.match(source, /fullscreenFailed/);
+  assert.doesNotMatch(source, /disableVerticalSwipes|addEventListener\('touchmove'/);
+  assert.match(css, /touch-action:pan-y/);
+});
+
+test('seller receipt proof stays with seller while direct-buyer proof reaches admins', () => {
+  const source = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+  const proof = source.slice(source.indexOf('async function handlePaymentProof('), source.indexOf('async function verifyDirectPayment('));
+  const sellerGuard = proof.indexOf("if (updated.source === 'seller')");
+  const forwarded = proof.indexOf('const receiptDelivery = await deliverReceiptToAdmins(');
+  assert.ok(sellerGuard > 0 && forwarded > sellerGuard, 'seller must return before owner receipt delivery');
+  assert.doesNotMatch(proof.slice(sellerGuard, forwarded), /notifyAdminsOfReview|deliverReceiptToAdmins/);
+  const sellerConfirm = source.slice(source.indexOf("if (data.startsWith('seller_ok:')"), source.indexOf("if (data.startsWith('admin_')"));
+  assert.doesNotMatch(sellerConfirm, /notifyAdmins|deliverReceiptToAdmins/);
+});

@@ -907,19 +907,22 @@ async function handlePaymentProof(message, purchase) {
 
   db.clearUserState(telegramId);
 
-  // Forward the original photo/document before Verify.et runs. A QR extracted
-  // into message.caption must never prevent the administrator seeing the image.
+  // Seller proof belongs to the seller's sale record, not the owner's inbox.
+  // The seller can separately attest payment using the existing "Buyer paid"
+  // button; settlement still remains independently unreconciled until checked.
+  if (updated.source === 'seller') {
+    await bot.sendMessage(telegramId, tr(telegramId,
+      '✅ የክፍያ ማስረጃው ተመዝግቧል። ለባለቤቱ መልእክት አልተላከም። ክፍያውን ካረጋገጡ በሽያጩ መልእክት ላይ “ገዢው ከፍሏል” ይጫኑ።',
+      '✅ Payment proof saved. Nothing was sent to the owner. Once you confirm payment, use "Buyer paid" on the sale message.'));
+    return sendMainMenu(telegramId);
+  }
+
+  // Direct-buyer proof continues to reach the administrators for verification.
   const receiptDelivery = await deliverReceiptToAdmins({
     bot, adminIds: db.listAdmins(), purchase: updated, message
   });
   if (fileId && receiptDelivery.delivered === 0) {
     console.error('[payment-receipt] No admin received screenshot for purchase', updated.id);
-  }
-
-  if (updated.source === 'seller') {
-    await bot.sendMessage(telegramId, tr(telegramId, '⏳ የክፍያ ማስረጃው ለፍኖተ ብርሃን አስተዳዳሪ ተልኳል። ክፍያው እስኪረጋገጥ ድረስ ትኬቱ SOLD አይሆንም።', '⏳ Payment proof sent to a FinoteBirhan administrator. The ticket will not become SOLD until the payment is approved.'));
-    await notifyAdminsOfReview(updated, message);
-    return sendMainMenu(telegramId);
   }
 
   if (!reference) {
