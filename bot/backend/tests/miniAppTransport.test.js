@@ -83,7 +83,8 @@ test('backend uses inline buyer launcher and routes /start through existing auth
 test('Mini App uses Telegram deep-link for inline buyers, sendData only for keyboard launch', () => {
   const source = fs.readFileSync(new URL('../../../app.js', import.meta.url), 'utf8');
   const handler = source.slice(source.indexOf("confirmBtn.addEventListener('click'"));
-  assert.match(handler, /inlineTransport && mode === 'buyer'/);
+  assert.match(handler, /if \(inlineTransport\)/);
+  assert.match(handler, /mode === 'seller' \? 's_' : 't_'/);
   assert.match(handler, /'https:\/\/t\.me\/' \+ botUsername \+ '\?start='/);
   assert.match(handler, /tg\.openTelegramLink\(link\)/);
   assert.match(handler, /tg\.sendData\(JSON\.stringify\(payload\)\)/);
@@ -93,7 +94,7 @@ test('Mini App uses Telegram deep-link for inline buyers, sendData only for keyb
 test('legacy unsupported launch method is refused without locking the button', () => {
   const source = fs.readFileSync(new URL('../../../app.js', import.meta.url), 'utf8');
   const handler = source.slice(source.indexOf("confirmBtn.addEventListener('click'"));
-  const guard = handler.indexOf("if (!((inlineTransport && mode === 'buyer') || (keyboardTransport && typeof tg?.sendData === 'function')))"); 
+  const guard = handler.indexOf("if (!(inlineTransport || (keyboardTransport && typeof tg?.sendData === 'function')))"); 
   assert.ok(guard >= 0 && handler.indexOf('confirmBtn.disabled = true') > guard);
 });
 
