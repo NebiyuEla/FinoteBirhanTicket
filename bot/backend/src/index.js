@@ -810,7 +810,7 @@ async function handleSellerInlineState(message, state) {
     await bot.sendMessage(telegramId, tr(telegramId, 'የሽያጩ ጊዜ አልፏል። ትኬቱን እንደገና ይምረጡ።', 'This selection expired. Please choose the ticket again.'));
     return sendFreshMiniAppLauncher(telegramId, 'seller');
   }
-  const input = String(message.text || '').trim().replace(/\\s+/g, ' ');
+  const input = String(message.text || '').trim().replace(/\s+/g, ' ');
   if (state.state === 'seller_sale_buyer_name') {
     if (input.length < 3 || input.length > 80) {
       await bot.sendMessage(telegramId, tr(telegramId, 'የገዢውን ሙሉ ስም ያስገቡ (3–80 ፊደላት)።', 'Enter the buyer full name (3–80 characters).'));
